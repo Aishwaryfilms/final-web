@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { supabase } from './supabaseClient';
 
 const RED = "#e02020";
 const RED_DARK = "#a00000";
@@ -799,8 +800,6 @@ const adminStyle = `
 /* ─────────────────────────────────────────────────
    CONSTANTS & DATA
 ───────────────────────────────────────────────── */
-const ADMIN_PASS = "Mypass123!";
-
 const SectionDivider = ({ label }) => (
   <div className="sec-divider" style={{ padding: "0 3rem" }}>
     <div className="sec-divider-line" />
@@ -817,23 +816,6 @@ const depts = [
   { title: "MERCHANDISE", desc: "Orders & returns" },
   { title: "TECHNICAL", desc: "Website & bugs" },
   { title: "FEEDBACK", desc: "Suggestions & ideas" },
-];
-
-const rosterData = {
-  BGMI: [
-    { id: 1, num: "01", name: "ClutchGod", real: "Vivek Aabhas Horo", role: "ASSAULTER", featured: true, img: null },
-    { id: 2, num: "02", name: "Shadow", real: "Arjun Mandhalkar", role: "IGL", featured: false, img: null },
-  ],
-  Valorant: [
-    { id: 3, num: "01", name: "PhantomX", real: "Rohan Verma", role: "DUELIST", featured: true, img: null },
-    { id: 4, num: "02", name: "VoidSight", real: "Priya Nair", role: "SENTINEL", featured: false, img: null },
-    { id: 5, num: "03", name: "AceStorm", real: "Karan Mehta", role: "CONTROLLER", featured: false, img: null },
-  ],
-};
-
-const creatorsInitial = [
-  { id: 101, num: "01", name: "Creator One", handle: "@creatorone", platform: "YouTube", type: "GAMEPLAY", featured: true, img: null },
-  { id: 102, num: "02", name: "Creator Two", handle: "@creatortwo", platform: "Instagram", type: "HIGHLIGHTS", featured: false, img: null },
 ];
 
 /* ─────────────────────────────────────────────────
@@ -883,72 +865,120 @@ export default function YouEsports() {
   // Admin state
   const [adminOpen, setAdminOpen] = useState(false);
   const [adminAuthed, setAdminAuthed] = useState(false);
+  const [adminEmail, setAdminEmail] = useState("");
   const [adminPass, setAdminPass] = useState("");
   const [adminErr, setAdminErr] = useState("");
+  const [adminLoading, setAdminLoading] = useState(false);
   const [adminTab, setAdminTab] = useState("BGMI");
   const [adminSaved, setAdminSaved] = useState(false);
+  const [adminOpErr, setAdminOpErr] = useState("");
 
   // Editable data
-  const [roster, setRoster] = useState(() =>
-    Object.fromEntries(
-      Object.entries(rosterData).map(([game, players]) => [
-        game,
-        players.map(p => ({ ...p }))
-      ])
-    )
-  );
-  const [creators, setCreators] = useState(() => creatorsInitial.map(c => ({ ...c })));
+  const [roster, setRoster] = useState({ BGMI: [], Valorant: [] });
+  const [creators, setCreators] = useState([]);
+  const [dataLoading, setDataLoading] = useState(true);
 
-  /* ── Admin auth ── */
-  const handleAdminLogin = () => {
-    if (adminPass === ADMIN_PASS) { setAdminAuthed(true); setAdminErr(""); }
-    else setAdminErr("Incorrect password. Try again.");
+  /* ── Fetch data from Supabase ── */
+  const fetchData = useCallback(async () => {
+    setDataLoading(true);
+    const [{ data: rosterRows }, { data: creatorRows }] = await Promise.all([
+      supabase.from('roster').select('*').order('num'),
+      supabase.from('creators').select('*').order('num'),
+    ]);
+    if (rosterRows) {
+      const grouped = { BGMI: [], Valorant: [] };
+      rosterRows.forEach(r => {
+        if (grouped[r.game]) grouped[r.game].push({ id: r.id, num: r.num, name: r.name, real: r.real_name, role: r.role, featured: r.featured, img: r.img });
+      });
+      setRoster(grouped);
+    }
+    if (creatorRows) {
+      setCreators(creatorRows.map(c => ({ id: c.id, num: c.num, name: c.name, handle: c.handle, platform: c.platform, type: c.type, featured: c.featured, img: c.img, link: c.link || "" })));
+    }
+    setDataLoading(false);
+  }, []);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  /* ── Admin auth via Supabase Auth ── */
+  const handleAdminLogin = async () => {
+    setAdminLoading(true); setAdminErr("");
+    const { error } = await supabase.auth.signInWithPassword({ email: adminEmail, password: adminPass });
+    setAdminLoading(false);
+    if (error) setAdminErr("Incorrect credentials. Try again.");
+    else { setAdminAuthed(true); setAdminErr(""); }
   };
-  const closeAdmin = () => {
+
+  const closeAdmin = async () => {
+    await supabase.auth.signOut();
     setAdminOpen(false); setAdminAuthed(false);
-    setAdminPass(""); setAdminErr("");
+    setAdminEmail(""); setAdminPass(""); setAdminErr("");
   };
 
-  /* ── Roster helpers ── */
+  /* ── Roster helpers (Supabase) ── */
   const updatePlayer = (game, id, field, value) =>
-    setRoster(prev => ({
-      ...prev,
-      [game]: prev[game].map(p => p.id === id ? { ...p, [field]: value } : p)
-    }));
+    setRoster(prev => ({ ...prev, [game]: prev[game].map(p => p.id === id ? { ...p, [field]: value } : p) }));
 
-  const addPlayer = (game) => {
-    const id = Date.now();
+  const addPlayer = async (game) => {
+    setAdminOpErr("");
     const num = String(roster[game].length + 1).padStart(2, "0");
+    const { data, error } = await supabase.from('roster')
+      .insert({ game, num, name: "New Player", real_name: "Real Name", role: "ROLE" })
+      .select('id, num, name, real_name, role')
+      .single();
+    if (error) { setAdminOpErr("Add failed: " + error.message); return; }
+    if (data) {
+      setRoster(prev => ({ ...prev, [game]: [...prev[game], { id: data.id, num: data.num, name: data.name, real: data.real_name, role: data.role, featured: false, img: null }] }));
+    }
+  };
+
+  const removePlayer = async (game, id) => {
+    setAdminOpErr("");
+    const { error } = await supabase.from('roster').delete().eq('id', id);
+    if (error) { setAdminOpErr("Remove failed: " + error.message); return; }
     setRoster(prev => ({
       ...prev,
-      [game]: [...prev[game], { id, num, name: "New Player", real: "Real Name", role: "ROLE", featured: false, img: null }]
+      [game]: prev[game].filter(p => p.id !== id).map((p, i) => ({ ...p, num: String(i + 1).padStart(2, "0") }))
     }));
   };
 
-  const removePlayer = (game, id) =>
-    setRoster(prev => ({
-      ...prev,
-      [game]: prev[game]
-        .filter(p => p.id !== id)
-        .map((p, i) => ({ ...p, num: String(i + 1).padStart(2, "0") }))
-    }));
-
-  /* ── Creator helpers ── */
+  /* ── Creator helpers (Supabase) ── */
   const updateCreator = (id, field, value) =>
     setCreators(prev => prev.map(c => c.id === id ? { ...c, [field]: value } : c));
 
-  const addCreator = () => {
-    const id = Date.now();
+  const addCreator = async () => {
+    setAdminOpErr("");
     const num = String(creators.length + 1).padStart(2, "0");
-    setCreators(prev => [...prev, { id, num, name: "New Creator", handle: "@handle", platform: "YouTube", type: "CONTENT CREATOR", featured: false, img: null }]);
+    const { data, error } = await supabase.from('creators')
+      .insert({ num, name: "New Creator", handle: "@handle", platform: "YouTube", type: "CONTENT CREATOR" })
+      .select('id, num, name, handle, platform, type')
+      .single();
+    if (error) { setAdminOpErr("Add failed: " + error.message); return; }
+    if (data) {
+      setCreators(prev => [...prev, { id: data.id, num: data.num, name: data.name, handle: data.handle, platform: data.platform, type: data.type, featured: false, img: null, link: "" }]);
+    }
   };
 
-  const removeCreator = (id) =>
-    setCreators(prev =>
-      prev.filter(c => c.id !== id).map((c, i) => ({ ...c, num: String(i + 1).padStart(2, "0") }))
-    );
+  const removeCreator = async (id) => {
+    setAdminOpErr("");
+    const { error } = await supabase.from('creators').delete().eq('id', id);
+    if (error) { setAdminOpErr("Remove failed: " + error.message); return; }
+    setCreators(prev => prev.filter(c => c.id !== id).map((c, i) => ({ ...c, num: String(i + 1).padStart(2, "0") })));
+  };
 
-  const handleAdminSave = () => {
+  const handleAdminSave = async () => {
+    setAdminLoading(true); setAdminOpErr("");
+    const allPlayers = [...(roster.BGMI || []), ...(roster.Valorant || [])];
+    const rosterResults = await Promise.all(allPlayers.map(p => {
+      const game = Object.keys(roster).find(g => roster[g].some(r => r.id === p.id));
+      return supabase.from('roster').update({ game, num: p.num, name: p.name, real_name: p.real, role: p.role, img: p.img || null }).eq('id', p.id);
+    }));
+    const creatorResults = await Promise.all(creators.map(c =>
+      supabase.from('creators').update({ num: c.num, name: c.name, handle: c.handle, platform: c.platform, type: c.type, img: c.img || null, link: c.link || null }).eq('id', c.id)
+    ));
+    const anyError = [...rosterResults, ...creatorResults].find(r => r.error);
+    setAdminLoading(false);
+    if (anyError) { setAdminOpErr("Save failed: " + anyError.error.message); return; }
     setAdminSaved(true);
     setTimeout(() => setAdminSaved(false), 2500);
   };
@@ -989,7 +1019,7 @@ export default function YouEsports() {
         </div>
         <div className="pc-real">{item.real || item.handle}</div>
         <div className="pc-role">{item.role || item.type}</div>
-        <a href="#" className="pc-view">{linkText} →</a>
+        <a href={item.link || "#"} className="pc-view" target={item.link ? "_blank" : "_self"} rel="noopener noreferrer">{linkText} →</a>
       </div>
     </div>
   );
@@ -1008,7 +1038,7 @@ export default function YouEsports() {
 
       {/* NAV */}
       <nav className="nav">
-        <a href="#home" className="nav-logo">YOU<span>ESPORTS</span></a>
+        <a href="#home" className="nav-logo" style={{ display: "flex", alignItems: "center", width: "36px", height: "36px" }}><LogoSVG /></a>
         <ul className="nav-links">
           {["home", "about", "roster", "creators", "contact"].map(s => (
             <li key={s}>
@@ -1031,7 +1061,14 @@ export default function YouEsports() {
 
             {!adminAuthed ? (
               <div className="admin-login">
-                <p>Enter admin password to manage content</p>
+                <p>Sign in with your admin account</p>
+                <input
+                  type="email"
+                  placeholder="Admin email"
+                  value={adminEmail}
+                  onChange={e => setAdminEmail(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && handleAdminLogin()}
+                />
                 <input
                   type="password"
                   placeholder="Password"
@@ -1040,7 +1077,9 @@ export default function YouEsports() {
                   onKeyDown={e => e.key === "Enter" && handleAdminLogin()}
                 />
                 {adminErr && <div className="admin-err">{adminErr}</div>}
-                <button onClick={handleAdminLogin}>UNLOCK →</button>
+                <button onClick={handleAdminLogin} disabled={adminLoading}>
+                  {adminLoading ? "SIGNING IN..." : "UNLOCK →"}
+                </button>
               </div>
             ) : (
               <>
@@ -1122,6 +1161,10 @@ export default function YouEsports() {
                             <label>CONTENT TYPE</label>
                             <input value={c.type} onChange={e => updateCreator(c.id, "type", e.target.value)} placeholder="e.g. GAMEPLAY" />
                           </div>
+                          <div className="admin-field" style={{ gridColumn: "1 / -1" }}>
+                            <label>CHANNEL / PROFILE LINK</label>
+                            <input value={c.link || ""} onChange={e => updateCreator(c.id, "link", e.target.value)} placeholder="https://youtube.com/@channel" />
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -1129,8 +1172,11 @@ export default function YouEsports() {
                   </>
                 )}
 
-                <button className="admin-save-btn" onClick={handleAdminSave}>✓ SAVE CHANGES</button>
+                <button className="admin-save-btn" onClick={handleAdminSave} disabled={adminLoading}>
+                  {adminLoading ? "SAVING..." : "✓ SAVE CHANGES"}
+                </button>
                 {adminSaved && <div className="save-success">✓ CHANGES APPLIED SUCCESSFULLY</div>}
+                {adminOpErr && <div className="admin-err" style={{ marginTop: "12px", textAlign: "center" }}>⚠ {adminOpErr}</div>}
               </>
             )}
           </div>
@@ -1164,38 +1210,38 @@ export default function YouEsports() {
         </div>
       </section>
 
-      <SectionDivider label="ORIGINS · 起源" />
+      <SectionDivider label="ORIGINS" />
 
       {/* ABOUT */}
       <section id="about">
         <div className="about-inner">
           <div>
-            <div className="sec-label">ORIGINS · 起源</div>
+            <div className="sec-label">ORIGINS</div>
             <h2 className="sec-h2" style={{ fontSize: "clamp(36px,5vw,58px)" }}>
-              BORN TO RULE<br /><span className="red">THE BATTLEGROUND.</span>
+              WHO ARE WE<br /><span className="red">"YOU"</span>
             </h2>
             <p className="about-body">
-              You eSports is a professional esports organization built on raw talent, fearless strategy and an unshakable will to rule the battleground.<br /><br />
-              Founded by Vivek Aabhas Horo (ClutchGod), who lives for the rush of competition. You eSports isn't just a name — it's a mindset.<br /><br />
-              Our mission is to dominate the competitive scene, inspire the community and prove that true kings are made through dedication and teamwork. Victory isn't given — it's taken. We are You eSports.
+              Founded in 2021 by Suyash "Yunay" Kandalgaonkar and operational since 2023, YOU esports is built on the belief that every gamer deserves a chance to shine.<br /><br />
+              We bridge the gap between elite competition and community entertainment, fielding powerhouse esports rosters while supporting a diverse team of content creators.<br /><br />
+              At our core, we are more than just an organization; we are a collective dedicated to helping players and fans grow together, ensuring that everyone has a path to involve themselves in the future of esports.
             </p>
           </div>
           <div className="quote-card">
             <div className="quote-mark">"</div>
-            <p className="quote-text">Victory isn't given — it's taken. True kings are made through dedication, teamwork, and an unshakable will.</p>
+            <p className="quote-text">Every gamer deserves a chance to shine. We are more than an organization — we are a collective.</p>
             <div className="quote-attr">YOU ESPORTS</div>
           </div>
         </div>
       </section>
 
-      <SectionDivider label="DIVISION · 戦" />
+      <SectionDivider label="DIVISION" />
 
       {/* ROSTER */}
       <section id="roster">
         <div className="roster-header">
           <div>
             <div className="sec-label">DIVISION</div>
-            <h2 className="sec-h2">{activeGame} <span className="red">戦</span></h2>
+            <h2 className="sec-h2">{activeGame}</h2>
             <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.35)", marginTop: "0.5rem" }}>
               {activeGame === "BGMI" ? "The undisputed kings of the sub-continent." : "Precision. Speed. Dominance on every map."}
             </p>
@@ -1218,7 +1264,7 @@ export default function YouEsports() {
         </div>
       </section>
 
-      <SectionDivider label="CREATORS · 創作者" />
+      <SectionDivider label="CREATORS" />
 
       {/* CONTENT CREATORS */}
       <section id="creators">
@@ -1284,7 +1330,7 @@ export default function YouEsports() {
             <div className="info-list">
               <div className="info-item">
                 <div className="info-icon">✉</div>
-                <div><div className="info-label">EMAIL</div><div className="info-val">contact@youesports.gg</div></div>
+                <div><div className="info-label">EMAIL</div><div className="info-val">contact@youesports.org</div></div>
               </div>
               <div className="info-item">
                 <div className="info-icon">⊙</div>
@@ -1345,20 +1391,12 @@ export default function YouEsports() {
           <a href="#">News</a>
         </div>
         <div>
-          <h4>ECOSYSTEM</h4>
-          <a href="#about">About You eSports</a>
-          <a href="#">Careers</a>
-          <a href="#">Partnerships</a>
-          <a href="#">Content Creators</a>
-          <a href="#">Press Kit</a>
-        </div>
-        <div>
           <h4>HEADQUARTERS</h4>
           <div className="footer-hq">
             <strong>Mumbai, India</strong><br />
             Maharashtra 400001<br /><br />
-            <a href="mailto:contact@youesports.gg" style={{ display: "inline", color: RED }}>
-              contact@youesports.gg
+            <a href="mailto:contact@youesports.org" style={{ display: "inline", color: RED }}>
+              contact@youesports.org
             </a>
           </div>
         </div>
