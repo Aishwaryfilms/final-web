@@ -1,135 +1,79 @@
 # Deployment Guide
 
-## Overview
+This project is a static React application built with Vite and powered by a Supabase backend. It is configured to be deployed to GitHub Pages, while data and authentication are handled securely via Supabase.
 
-This project has two parts:
-- **Frontend**: Static React app deployed to GitHub Pages (https://Aishwaryfilms.github.io/you)
-- **Backend (Admin API)**: Node.js server with admin panel, Supabase integration, and JWT auth
+## 1. Supabase Setup (Backend)
 
-Admin login on GitHub Pages requires the backend server to be deployed and configured.
+The app's data is stored in a Supabase project. There is no custom Node.js server. Instead, we use Supabase to store content like Rosters, Content Creators, and handle Admin Panel login securely. 
 
----
+### Step 1: Create a Supabase Project
+1. Go to [Supabase](https://supabase.com/) and create an account.
+2. Create a new project. 
 
-## 1. Deploy the Server (via Render)
+### Step 2: Configure Authentication for the Admin Panel
+1. In your Supabase dashboard, go to **Authentication** -> **Providers**.
+2. Make sure **Email** is enabled, and **disable** "Confirm email" (it's simpler for private admin usage).
+3. Go to **Authentication** -> **Users** and add a new user. This will be your admin login. Use an email and a strong password.
 
-### Step 1: Create a Render Account
-1. Go to https://render.com and sign up (free tier available).
-2. Connect your GitHub account.
+### Step 3: Get Your Environment Variables
+You need two values from Supabase:
+1. In your project settings, go to **Project Settings** -> **API**.
+2. Copy your **Project URL** (`VITE_SUPABASE_URL`).
+3. Copy your **anon / public key** (`VITE_SUPABASE_ANON_KEY`).
 
-### Step 2: Create a Web Service
-1. In Render dashboard, click **New +** → **Web Service**.
-2. Select your `Aishwaryfilms/you` repository.
-3. Choose:
-   - **Name**: `you-admin-api` (or your preference)
-   - **Environment**: Node
-   - **Build Command**: `npm install` (default)
-   - **Start Command**: `npm start`
-   - **Plan**: Free (if you want free tier; paid plans are ~$7/month)
+**IMPORTANT**: Never share your Service Role key publicly. Your frontend only needs the `anon` key.
 
-### Step 3: Set Environment Variables
-In the Render web service **Environment** section, add:
+## 2. Setting Up GitHub Secrets
 
-```
-PORT=8787
-SUPABASE_URL=https://YOUR_PROJECT.supabase.co
-SUPABASE_SERVICE_ROLE=YOUR_SERVICE_ROLE_KEY_HERE
-ADMIN_PASS_HASH=scrypt:0921de9a048ecd4efebdf9da:tfaqarpFMyihHc5iFiRyWMwtHWzmaOEmCfHhevj4piHHl6if1Y3LYsLI/kKIQV2aHxOeO+kefT+blbGlarTjAA==
-ADMIN_JWT_SECRET=YOUR_LONG_RANDOM_SECRET_HERE
-ADMIN_ALLOWED_ORIGINS=https://Aishwaryfilms.github.io
-```
+To deploy automatically with GitHub Actions, the deployment script needs access to your Supabase keys to compile the frontend successfully.
 
-**Where to get these values:**
-- `SUPABASE_URL` & `SUPABASE_SERVICE_ROLE`: From your Supabase project settings → API.
-- `ADMIN_PASS_HASH`: Already generated (password: `websitepass123!`). Copy from your local `.env.server`.
-- `ADMIN_JWT_SECRET`: Generate a long random string (e.g., `openssl rand -base64 32` or use https://generate-random.org/).
-- `ADMIN_ALLOWED_ORIGINS`: Your GitHub Pages URL.
-
-### Step 4: Deploy
-Click **Create Web Service**. Render will build and deploy automatically.
-
-- **Service URL**: e.g., `https://you-admin-api.onrender.com`
-- **Note**: Free tier services sleep after 15 min of inactivity; first request wakes them (~30s delay).
-
----
-
-## 2. Configure GitHub Secrets
-
-1. Go to your GitHub repo **Settings** → **Secrets and variables** → **Actions**.
-2. Add these secrets:
+1. Go to your GitHub repository -> **Settings** -> **Secrets and variables** -> **Actions**.
+2. Click **New repository secret** and add the following two secrets exactly:
 
 | Secret Name | Value |
 |---|---|
-| `ADMIN_API_URL` | `https://your-service-name.onrender.com` (replace with your Render service URL) |
-| `RENDER_API_KEY` | (Optional) Your Render API key for automated deploys |
-| `RENDER_SERVICE_ID` | (Optional) Your Render service ID for automated deploys |
+| `VITE_SUPABASE_URL` | Your Supabase Project URL |
+| `VITE_SUPABASE_ANON_KEY` | Your Supabase anon / public key |
 
----
+*(Note: Ensure your GitHub Actions workflow file maps these secrets during the `npm run build` step. See `.github/workflows/deploy.yml`)*
 
-## 3. Test the Setup
+## 3. Deployment
 
-After pushing changes to `main`:
+### Option A: Automatic Git Deployment (Recommended)
+If your GitHub Actions are set up, pushing code to the `main` branch will automatically trigger a build.
+1. Push to `main`.
+2. Go to the **Actions** tab in GitHub to watch the build.
+3. Your site will automatically go live via GitHub Pages.
 
-1. **GitHub Actions**: Check that both workflows run:
-   - ✅ Deploy to GitHub Pages (frontend)
-   - ✅ Deploy Server (if secrets are set)
+### Option B: Manual Local Deployment
+If you prefer not to use GitHub Actions, you can deploy manually from your terminal:
 
-2. **Admin Login on GitHub Pages**:
-   - Go to https://Aishwaryfilms.github.io/you
-   - Click **Admin** (or appropriate button).
-   - Enter password: `websitepass123!`
-   - Should authenticate via your deployed backend.
-
-3. **Local Testing** (optional):
+1. Create a `.env` file locally (derived from `.env.example`) and insert your keys:
    ```bash
-   # In one terminal
-   npm run server
-   
-   # In another terminal, test login:
-   curl -X POST -H "Content-Type: application/json" \
-     -d '{"password":"websitepass123!"}' \
-     http://localhost:8787/api/admin/login
+   VITE_SUPABASE_URL=https://your-project.supabase.co
+   VITE_SUPABASE_ANON_KEY=your-anon-key-here
    ```
+2. Run the deployment script:
+   ```bash
+   npm run deploy
+   ```
+   *(This will run Vite build and push the built assets into the `gh-pages` branch).*
 
----
+## 4. Verification & Testing
 
-## 4. Server Endpoints
+Once deployed, you can verify your setup by:
+1. Navigating to your deployed URL.
+2. Clicking the hidden/admin panel route or button.
+3. Logging in with the email and password you created in your Supabase Authentication dashboard.
+4. If successful, you will be able to perform CRUD actions (Create, Read, Update, Delete) securely on your database.
 
-All require `Authorization: Bearer <JWT_TOKEN>` header (except `/api/admin/login`).
+## Troubleshooting
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/admin/login` | Login with password → receive JWT |
-| GET | `/api/admin/verify` | Verify JWT token |
-| GET | `/api/admin/users` | List Supabase users |
-| GET | `/api/admin/posts` | List posts from Supabase |
-| POST | `/api/admin/posts` | Create post |
-| PUT | `/api/admin/posts/:id` | Update post |
-| DELETE | `/api/admin/posts/:id` | Delete post |
+### "Invalid Login Credentials"
+- Double check that you've correctly added the user inside Supabase Auth dashboard.
+- Ensure the user's password is correct and email confirmation was disabled (or the email was confirmed).
 
----
-
-## 5. Troubleshooting
-
-### Admin login says "Cannot reach admin server"
-- ✅ Check `VITE_ADMIN_API_URL` secret is set in GitHub.
-- ✅ Check your Render service is deployed and running (no errors in logs).
-- ✅ Check `ADMIN_ALLOWED_ORIGINS` includes your GitHub Pages URL.
-
-### "Incorrect password. Try again."
-- ✅ Verify `ADMIN_PASS_HASH` is correct on the Render service.
-- ✅ Default password is: `websitepass123!`
-
-### Supabase routes return 500
-- ✅ Check `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE` are set.
-- ✅ Verify service role key (not anon key) is used.
-- ✅ Check Supabase project has a `posts` table (create it if missing).
-
----
-
-## 6. Next Steps
-
-- [ ] Deploy the server to Render.
-- [ ] Add `ADMIN_API_URL` secret to GitHub.
-- [ ] Test admin login on GitHub Pages.
-- [ ] Monitor GitHub Actions for any workflow failures.
-- [ ] (Optional) Set `RENDER_API_KEY` + `RENDER_SERVICE_ID` for automated deploys.
+### Admin Panel Doesn't Load Data
+- Check the browser Console via F12.
+- If you see `supabase url is required` or similar, it means the app was compiled without access to `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. Make sure your GitHub secrets are correct or manually compile locally.
+- Double-check that your RLS (Row Level Security) policies aren't inadvertently blocking read queries if you've turned them on.
