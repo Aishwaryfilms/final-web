@@ -1235,14 +1235,7 @@ export default function YouEsports() {
         <p className="hero-sub">
           Priority access to limited apparel drops, private tournaments, and behind-the-scenes esports culture. Be first. Be inside.
         </p>
-        <div className="email-bar">
-          <input type="email" placeholder="Enter your email to join the kingdom" />
-          <button>JOIN →</button>
-        </div>
-        <div className="hero-trust">
-          <span>NO SPAM, EVER</span>
-          <span>EARLY DROP ACCESS</span>
-        </div>
+
         <div className="scroll-hint">
           <div className="scroll-line" />
           SCROLL
