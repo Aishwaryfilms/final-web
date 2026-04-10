@@ -873,7 +873,7 @@ export default function YouEsports() {
     e.preventDefault();
     setFormStatus("sending");
     try {
-      const res = await fetch("https://formsubmit.co/ajax/contact@youesports.org", {
+      const res = await fetch("https://formsubmit.co/ajax/youesportsmail@gmail.com", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Accept": "application/json" },
         body: JSON.stringify({
