@@ -3,7 +3,7 @@
   "name": "youesports",
   "version": "1.0.0",
   "private": true,
-  "homepage": "https://Aishwaryfilms.github.io/code",
+  "homepage": "https://Aishwaryfilms.github.io/final-web",
   "scripts": {
     "dev": "vite",
     "build": "vite build && node -e \"require('fs').copyFileSync('dist/index.html', 'dist/404.html')\"",
@@ -25,7 +25,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Aishwaryfilms/code.git"
+    "url": "https://github.com/Aishwaryfilms/final-web.git"
 =======
   "devDependencies": {
     "gh-pages": "^6.3.0"
