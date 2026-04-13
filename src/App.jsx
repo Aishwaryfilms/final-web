@@ -12,6 +12,46 @@ const SOCIAL_LINKS = [
   { label: "YT", href: "https://www.youtube.com/@YOUeSportsCC", name: "YouTube" },
 ];
 
+const SocialIcon = ({ name }) => {
+  switch (name) {
+    case "Discord":
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" className="social-icon">
+          <path
+            fill="currentColor"
+            d="M20.317 4.369a19.79 19.79 0 0 0-5.191-1.569 13.7 13.7 0 0 0-.666 1.35 18.42 18.42 0 0 0-5.919 0 13.3 13.3 0 0 0-.666-1.35A19.74 19.74 0 0 0 2.683 4.37C-.327 8.874-.923 13.268-.625 17.6a19.95 19.95 0 0 0 6.117 3.104 14.9 14.9 0 0 0 1.308-2.108 12.8 12.8 0 0 1-2.003-.966c.167-.126.329-.257.487-.392a.05.05 0 0 1 .052-.006c3.857 1.762 8.035 1.762 11.846 0a.05.05 0 0 1 .053.006c.158.135.32.266.487.392a12.8 12.8 0 0 1-2.003.966 14.9 14.9 0 0 0 1.308 2.108 19.94 19.94 0 0 0 6.117-3.104c.35-5.021-.596-9.376-3.529-13.23zM8.02 15.331c-1.182 0-2.153-1.086-2.153-2.419s.95-2.419 2.153-2.419c1.208 0 2.174 1.094 2.153 2.419 0 1.333-.95 2.419-2.153 2.419zm7.96 0c-1.182 0-2.153-1.086-2.153-2.419s.95-2.419 2.153-2.419c1.208 0 2.174 1.094 2.153 2.419 0 1.333-.945 2.419-2.153 2.419z"
+          />
+        </svg>
+      );
+    case "X":
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" className="social-icon">
+          <path
+            fill="currentColor"
+            d="M4.5 3h4.6l4 5.4L17.6 3H21l-6.4 7.3L21.7 21h-4.6l-4.5-6.1L7.2 21H3.8l6.9-7.9L4.5 3Zm2.1 1.8 11.4 15.4h1.6L8.2 4.8H6.6Z"
+          />
+        </svg>
+      );
+    case "Instagram":
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" className="social-icon">
+          <rect x="4" y="4" width="16" height="16" rx="4.5" fill="none" stroke="currentColor" strokeWidth="1.8" />
+          <circle cx="12" cy="12" r="3.3" fill="none" stroke="currentColor" strokeWidth="1.8" />
+          <circle cx="17" cy="7" r="1.1" fill="currentColor" />
+        </svg>
+      );
+    case "YouTube":
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" className="social-icon">
+          <rect x="3" y="6.5" width="18" height="11" rx="4" fill="currentColor" opacity="0.18" />
+          <path fill="currentColor" d="M10 8.5 16 12l-6 3.5v-7Z" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+};
+
 const LogoSVG = () => (
   <svg
     viewBox="0 0 297 346"
@@ -591,6 +631,7 @@ const style = `
     color: rgba(255,255,255,0.45);
     transition: all 0.2s; text-decoration: none;
   }
+  .social-icon { width: 18px; height: 18px; display: block; }
   .social-btn:hover { border-color: rgba(200,0,0,0.4); color: var(--red); }
   .form-grid { display: flex; flex-direction: column; gap: 12px; }
   .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -665,6 +706,7 @@ const style = `
     font-size: 10px; color: rgba(255,255,255,0.38);
     text-decoration: none; transition: all 0.2s;
   }
+  .footer-social .social-icon { width: 15px; height: 15px; }
   .footer-social:hover { border-color: rgba(200,0,0,0.4); color: var(--red); }
   .footer-bottom {
     position: relative; z-index: 1;
@@ -1496,7 +1538,9 @@ export default function YouEsports() {
                 <div className="follow-label">FOLLOW US</div>
                 <div className="socials">
                   {SOCIAL_LINKS.filter(s => s.href).map(s => (
-                    <a key={s.label} href={s.href} className="social-btn" target="_blank" rel="noopener noreferrer" aria-label={s.name}>{s.label}</a>
+                    <a key={s.label} href={s.href} className="social-btn" target="_blank" rel="noopener noreferrer" aria-label={s.name}>
+                      <SocialIcon name={s.name} />
+                    </a>
                   ))}
                 </div>
               </>
@@ -1567,7 +1611,9 @@ export default function YouEsports() {
           <h4>NETWORK</h4>
           <div className="footer-socials">
             {SOCIAL_LINKS.filter(s => s.href).map(s => (
-              <a key={s.label} href={s.href} className="footer-social" target="_blank" rel="noopener noreferrer" aria-label={s.name}>{s.label}</a>
+              <a key={s.label} href={s.href} className="footer-social" target="_blank" rel="noopener noreferrer" aria-label={s.name}>
+                <SocialIcon name={s.name} />
+              </a>
             ))}
           </div>
         </div>
