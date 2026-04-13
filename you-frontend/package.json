@@ -1,0 +1,32 @@
+{
+  "name": "youesports",
+  "version": "1.0.0",
+  "private": true,
+  "homepage": "https://Aishwaryfilms.github.io/code",
+  "scripts": {
+    "dev": "vite",
+    "build:dist": "vite build && node -e \"require('fs').copyFileSync('dist/index.html', 'dist/404.html')\"",
+    "build": "node scripts/publish-static.mjs",
+    "publish:static": "node scripts/publish-static.mjs",
+    "preview": "vite preview",
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d dist"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.103.0",
+    "framer-motion": "^12.38.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.30.3"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.0.0",
+    "gh-pages": "^6.0.0",
+    "prisma": "^7.7.0",
+    "vite": "^5.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Aishwaryfilms/code.git"
+  }
+}
