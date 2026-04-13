@@ -140,16 +140,18 @@ const style = `
 
   /* BG */
   .bg-fixed { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
-  .bg-orb { position: absolute; border-radius: 50%; }
+  .bg-orb { position: absolute; border-radius: 50%; will-change: transform; }
   .orb1 {
     width:700px; height:700px;
     background: radial-gradient(circle, rgba(200,0,0,0.18) 0%, transparent 70%);
     top:-200px; right:-150px;
+    animation: orbFloatA 20s ease-in-out infinite;
   }
   .orb2 {
     width:500px; height:500px;
     background: radial-gradient(circle, rgba(150,0,0,0.12) 0%, transparent 70%);
     bottom:100px; left:-150px;
+    animation: orbFloatB 26s ease-in-out infinite;
   }
   .bg-grid {
     position: fixed; inset: 0; pointer-events: none; z-index: 0;
@@ -157,6 +159,20 @@ const style = `
       linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
       linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
     background-size: 56px 56px;
+    will-change: transform;
+    animation: gridPan 36s linear infinite;
+  }
+  @keyframes orbFloatA {
+    0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+    50% { transform: translate3d(-24px, 20px, 0) scale(1.05); }
+  }
+  @keyframes orbFloatB {
+    0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+    50% { transform: translate3d(28px, -18px, 0) scale(1.04); }
+  }
+  @keyframes gridPan {
+    0% { transform: translate3d(0, 0, 0); }
+    100% { transform: translate3d(56px, 56px, 0); }
   }
 
   /* SECTION DIVIDER */
@@ -291,12 +307,21 @@ const style = `
     text-align: center;
     padding: 6rem 2rem 5rem;
   }
+  @keyframes heroRise {
+    0% { opacity: 0; transform: translate3d(0, 24px, 0) scale(0.985); }
+    100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  }
+  @keyframes heroFadeIn {
+    0% { opacity: 0; }
+    100% { opacity: 1; }
+  }
   .hero-logo-wrap {
     width: 140px;
     margin: 0 auto 2rem;
     display: flex; align-items: center; justify-content: center;
     background: none; border: none; outline: none;
     overflow: visible;
+    animation: heroRise 850ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
   .hero-logo-wrap svg {
     overflow: visible;
@@ -315,6 +340,7 @@ const style = `
     font-family: 'Space Mono', monospace;
     font-size: 9px; letter-spacing: 4px; color: var(--red);
     margin-bottom: 1.6rem;
+    animation: heroRise 850ms cubic-bezier(0.22, 1, 0.36, 1) 120ms both;
   }
   .hero-eyebrow::before,.hero-eyebrow::after {
     content: ''; width: 28px; height: 1px;
@@ -325,6 +351,7 @@ const style = `
     font-size: clamp(58px, 11vw, 110px);
     line-height: 0.93; letter-spacing: 2px;
     margin-bottom: 1.6rem;
+    animation: heroRise 850ms cubic-bezier(0.22, 1, 0.36, 1) 220ms both;
   }
   .hero-title .red {
     color: var(--red);
@@ -336,6 +363,7 @@ const style = `
     color: rgba(255,255,255,0.42);
     max-width: 480px; line-height: 1.75;
     margin: 0 auto 2.8rem;
+    animation: heroRise 850ms cubic-bezier(0.22, 1, 0.36, 1) 340ms both;
   }
   .email-bar {
     display: flex; max-width: 480px; width: 100%;
@@ -371,6 +399,7 @@ const style = `
     display: flex; flex-direction: column; align-items: center; gap: 6px;
     font-family: 'Space Mono', monospace;
     font-size: 9px; letter-spacing: 2.5px; color: rgba(255,255,255,0.18);
+    animation: heroFadeIn 900ms ease 620ms both;
   }
   .scroll-line {
     width: 1px; height: 42px;
@@ -379,6 +408,39 @@ const style = `
 
   /* SECTION COMMON */
   section { position: relative; z-index: 1; padding: 5.5rem 3rem; }
+  .reveal {
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 520ms cubic-bezier(0.22, 1, 0.36, 1), transform 520ms cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: opacity, transform;
+  }
+  .reveal.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .wipe {
+    display: inline-block;
+    clip-path: inset(0 100% 0 0);
+    transition: clip-path 620ms cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: clip-path;
+  }
+  .wipe.visible {
+    clip-path: inset(0 0 0 0);
+  }
+  .card {
+    opacity: 0;
+    transform: scale(0.05) translateY(60px);
+    transition:
+      opacity 640ms cubic-bezier(0.34, 1.56, 0.64, 1),
+      transform 640ms cubic-bezier(0.34, 1.56, 0.64, 1);
+    transition-delay: var(--card-delay, 0ms);
+    transform-origin: center bottom;
+    will-change: opacity, transform;
+  }
+  .card.visible {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
   .sec-label {
     display: inline-flex; align-items: center; gap: 8px;
     font-family: 'Space Mono', monospace;
@@ -471,7 +533,11 @@ const style = `
   .player-card {
     border-radius: 20px;
     position: relative; overflow: hidden;
-    transition: transform 0.28s, box-shadow 0.28s;
+    transition:
+      opacity 640ms cubic-bezier(0.34, 1.56, 0.64, 1),
+      transform 640ms cubic-bezier(0.34, 1.56, 0.64, 1),
+      box-shadow 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+    transition-delay: var(--card-delay, 0ms);
     cursor: default;
     display: flex; flex-direction: column;
   }
@@ -484,7 +550,7 @@ const style = `
     border: 1px solid rgba(255,255,255,0.08);
   }
   .player-card:hover {
-    transform: translateY(-6px);
+    transform: translateY(-8px);
     box-shadow: 0 28px 64px rgba(200,0,0,0.18);
   }
 
@@ -729,9 +795,9 @@ const style = `
     font-family: 'Space Mono', monospace;
     font-size: 11px; letter-spacing: 2px; cursor: pointer;
     box-shadow: 0 0 28px rgba(200,0,0,0.22);
-    transition: box-shadow 0.2s;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
   }
-  .send-btn:hover { box-shadow: 0 0 48px rgba(200,0,0,0.4); }
+  .send-btn:hover { transform: translateY(-2px); box-shadow: 0 0 48px rgba(200,0,0,0.4); }
   .form-note { font-size: 11px; color: rgba(255,255,255,0.18); text-align: center; }
   .resp-badge {
     display: flex; align-items: center; gap: 12px;
@@ -807,6 +873,22 @@ const style = `
   .admin-open-btn:hover {
     border-color: rgba(200,0,0,0.4);
     color: rgba(200,0,0,0.7);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .orb1, .orb2, .bg-grid,
+    .hero-logo-wrap, .hero-logo-wrap svg, .hero-eyebrow, .hero-title, .hero-sub, .scroll-hint {
+      animation: none !important;
+    }
+    .card, .card.visible,
+    .reveal, .reveal.visible,
+    .wipe, .wipe.visible {
+      opacity: 1 !important;
+      transform: none !important;
+      transition: none !important;
+      clip-path: inset(0 0 0 0) !important;
+    }
   }
 
   @media (max-width: 900px) {
@@ -1010,7 +1092,7 @@ const adminStyle = `
 const SectionDivider = ({ label }) => (
   <div className="sec-divider">
     <div className="sec-divider-line" />
-    <span className="sec-divider-label">{label}</span>
+    <span className="sec-divider-label wipe">{label}</span>
     <div className="sec-divider-dot" />
     <div className="sec-divider-line" />
   </div>
@@ -1257,13 +1339,140 @@ export default function YouEsports() {
     };
   }, []);
 
+  // Make wheel scrolling feel faster and smoother on desktop devices.
+  useEffect(() => {
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const hasFinePointer = window.matchMedia("(pointer: fine)");
+    if (prefersReducedMotion.matches || !hasFinePointer.matches) return;
+
+    let rafId = 0;
+    let currentY = window.scrollY;
+    let targetY = window.scrollY;
+
+    const clampY = (value) => {
+      const maxY = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      return Math.max(0, Math.min(maxY, value));
+    };
+
+    const shouldBypassSmoothScroll = (eventTarget) => {
+      let node = eventTarget instanceof Element ? eventTarget : null;
+      while (node && node !== document.body) {
+        const style = window.getComputedStyle(node);
+        const canScrollY =
+          (style.overflowY === "auto" || style.overflowY === "scroll") &&
+          node.scrollHeight > node.clientHeight + 2;
+        if (canScrollY) return true;
+        node = node.parentElement;
+      }
+      return false;
+    };
+
+    const tick = () => {
+      const delta = targetY - currentY;
+      if (Math.abs(delta) < 0.4) {
+        currentY = targetY;
+        window.scrollTo(0, currentY);
+        rafId = 0;
+        return;
+      }
+      const ease = Math.min(0.28, 0.17 + Math.abs(delta) / 1200);
+      currentY += delta * ease;
+      window.scrollTo(0, currentY);
+      rafId = window.requestAnimationFrame(tick);
+    };
+
+    const ensureTicking = () => {
+      if (!rafId) rafId = window.requestAnimationFrame(tick);
+    };
+
+    const onWheel = (event) => {
+      if (event.ctrlKey || shouldBypassSmoothScroll(event.target)) return;
+
+      const verticalScroll = Math.abs(event.deltaY) >= Math.abs(event.deltaX);
+      if (!verticalScroll) return;
+
+      event.preventDefault();
+
+      const direction = Math.sign(event.deltaY) || 1;
+      const amplifiedDelta = event.deltaY * 1.45;
+      const clampedMagnitude = Math.min(Math.max(Math.abs(amplifiedDelta), 34), 240);
+      const adjustedDelta = direction * clampedMagnitude;
+      targetY = clampY(targetY + adjustedDelta);
+      ensureTicking();
+    };
+
+    const syncPosition = () => {
+      if (rafId) return;
+      currentY = window.scrollY;
+      targetY = window.scrollY;
+    };
+
+    const onResize = () => {
+      currentY = clampY(currentY);
+      targetY = clampY(targetY);
+    };
+
+    window.addEventListener("wheel", onWheel, { passive: false });
+    window.addEventListener("scroll", syncPosition, { passive: true });
+    window.addEventListener("resize", onResize);
+
+    return () => {
+      window.removeEventListener("wheel", onWheel);
+      window.removeEventListener("scroll", syncPosition);
+      window.removeEventListener("resize", onResize);
+      if (rafId) window.cancelAnimationFrame(rafId);
+    };
+  }, []);
+
+  // Add .visible as elements enter the viewport (no animation library required).
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    const targets = Array.from(
+      document.querySelectorAll(".card:not(.visible), .reveal:not(.visible), .wipe:not(.visible)")
+    );
+    if (!targets.length) return;
+
+    const cardGroups = new Map();
+    targets.forEach((target) => {
+      if (!target.classList.contains("card")) return;
+      const parent = target.parentElement || document.body;
+      if (!cardGroups.has(parent)) cardGroups.set(parent, []);
+      cardGroups.get(parent).push(target);
+    });
+
+    cardGroups.forEach((cards) => {
+      cards.forEach((card, index) => {
+        card.style.setProperty("--card-delay", `${index * 120}ms`);
+      });
+    });
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          entry.target.classList.add("visible");
+          if (entry.target.classList.contains("reveal")) {
+            entry.target.querySelectorAll(".wipe").forEach((node) => node.classList.add("visible"));
+          }
+          observer.unobserve(entry.target);
+        });
+      },
+      { threshold: 0.1, rootMargin: "0px 0px -6% 0px" }
+    );
+
+    targets.forEach((target) => observer.observe(target));
+
+    return () => observer.disconnect();
+  }, [roster.BGMI.length, roster.Valorant.length, creators.length]);
+
   const handleDeptClick = (i) => { setActiveDept(i); setSubject(depts[i].title); };
   const players = roster[activeGame];
   const socialLinks = SOCIAL_LINKS.filter(s => s.href);
 
   /*  Shared card renderer  */
   const renderCard = (item, label, linkText) => (
-    <div key={item.id} className={`player-card ${item.featured ? "featured" : "standard"}`}>
+    <div key={item.id} className={`player-card card ${item.featured ? "featured" : "standard"}`}>
       <div className="pc-img-area">
         {item.img
           ? <img src={item.img} alt={item.name} />
@@ -1495,10 +1704,10 @@ export default function YouEsports() {
 
       <SectionDivider label="ORIGINS" />
       {/* ABOUT */}
-      <section id="about">
-        <div className="about-inner">
+      <section id="about" className="reveal">
+        <div className="about-inner card">
           <div>
-            <div className="sec-label">ORIGINS</div>
+            <div className="sec-label wipe">ORIGINS</div>
             <h2 className="sec-h2" style={{ fontSize: "clamp(36px,5vw,58px)" }}>
               WHO ARE WE<br /><span className="red">"YOU"</span>
             </h2>
@@ -1508,7 +1717,7 @@ export default function YouEsports() {
               At our core, we are more than just an organization; we are a collective dedicated to helping players and fans grow together, ensuring that everyone has a path to involve themselves in the future of esports.
             </p>
           </div>
-          <div className="quote-card">
+          <div className="quote-card card">
             <div className="quote-mark">"</div>
             <p className="quote-text">Every gamer deserves a chance to shine. We are more than an organization - we are a collective.</p>
             <div className="quote-attr">YOU ESPORTS</div>
@@ -1518,10 +1727,10 @@ export default function YouEsports() {
 
       <SectionDivider label="DIVISION" />
       {/* ROSTER */}
-      <section id="roster">
+      <section id="roster" className="reveal">
         <div className="roster-header">
           <div>
-            <div className="sec-label">DIVISION</div>
+            <div className="sec-label wipe">DIVISION</div>
             <h2 className="sec-h2">{activeGame}</h2>
             <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.35)", marginTop: "0.5rem" }}>
               {activeGame === "BGMI" ? "The undisputed kings of the sub-continent." : "Precision. Speed. Dominance on every map."}
@@ -1547,10 +1756,10 @@ export default function YouEsports() {
 
       <SectionDivider label="CREATORS" />
       {/* CONTENT CREATORS */}
-      <section id="creators">
+      <section id="creators" className="reveal">
         <div className="roster-header">
           <div>
-            <div className="sec-label">CONTENT CREATORS</div>
+            <div className="sec-label wipe">CONTENT CREATORS</div>
             <h2 className="sec-h2">OUR <span className="red">CREATORS</span></h2>
             <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.35)", marginTop: "0.5rem" }}>
               The voices, faces & highlights of You eSports.
@@ -1566,10 +1775,10 @@ export default function YouEsports() {
 
       <SectionDivider label="THE ARMORY - MERCH" />
       {/* SHOP */}
-      <section id="shop">
-        <div className="sec-label">THE ARMORY</div>
+      <section id="shop" className="reveal">
+        <div className="sec-label wipe">THE ARMORY</div>
         <h2 className="sec-h2">MERCH <span className="red">DROPS</span></h2>
-        <div className="coming-soon-wrap">
+        <div className="coming-soon-wrap card">
           <div className="cs-img-box">
             <img src={merchPreview} alt="You eSports Jersey First Look" />
           </div>
@@ -1586,9 +1795,9 @@ export default function YouEsports() {
 
       <SectionDivider label="REACH OUT - CONNECT" />
       {/* CONTACT */}
-      <section id="contact">
-        <div className="sec-label">REACH OUT</div>
-        <div className="contact-inner">
+      <section id="contact" className="reveal">
+        <div className="sec-label wipe">REACH OUT</div>
+        <div className="contact-inner card">
           <div>
             <h2 className="sec-h2" style={{ fontSize: "clamp(30px,4vw,48px)" }}>
               LET'S <span className="red">CONNECT</span>
@@ -1677,7 +1886,7 @@ export default function YouEsports() {
       </section>
 
       {/* FOOTER */}
-      <footer>
+      <footer className="reveal">
         <div>
           <h4>DIRECTORY</h4>
           <a href={getPageHref("home")}>Home</a>
@@ -1708,7 +1917,7 @@ export default function YouEsports() {
         </div>
       </footer>
 
-      <div className="footer-bottom">
+      <div className="footer-bottom reveal">
         <span>Copyright 2025 <span className="accent">You eSports</span>. All rights reserved.</span>
         <span className="accent">THE PINNACLE OF ESPORTS</span>
         <button
