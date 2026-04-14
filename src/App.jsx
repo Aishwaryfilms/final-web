@@ -348,7 +348,7 @@ const style = `
   }
   .hero-title {
     font-family: 'Bebas Neue', sans-serif;
-    font-size: clamp(58px, 11vw, 110px);
+    font-size: clamp(66px, 12.5vw, 132px);
     line-height: 0.93; letter-spacing: 2px;
     margin-bottom: 1.6rem;
     animation: heroRise 850ms cubic-bezier(0.22, 1, 0.36, 1) 220ms both;
@@ -356,7 +356,7 @@ const style = `
   .hero-title .red {
     color: var(--red);
     text-shadow: 0 0 70px rgba(200,0,0,0.5);
-    display: block;
+    display: inline-block;
   }
   .hero-sub {
     font-size: 15px; font-weight: 300;
@@ -1225,27 +1225,37 @@ export default function YouEsports() {
   // Editable data
   const [roster, setRoster] = useState({ BGMI: [], Valorant: [] });
   const [creators, setCreators] = useState([]);
-  const [dataLoading, setDataLoading] = useState(true);
+  const [creatorsLoading, setCreatorsLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
 
   /*  Fetch data from Supabase  */
   const fetchData = useCallback(async () => {
-    setDataLoading(true);
-    const [{ data: rosterRows }, { data: creatorRows }] = await Promise.all([
-      supabase.from('roster').select('*').order('num'),
-      supabase.from('creators').select('*').order('num'),
-    ]);
-    if (rosterRows) {
-      const grouped = { BGMI: [], Valorant: [] };
-      rosterRows.forEach(r => {
-        if (grouped[r.game]) grouped[r.game].push({ id: r.id, num: r.num, name: r.name, real: r.real_name, role: r.role, featured: r.featured, img: r.img });
+    setCreatorsLoading(true);
+
+    const rosterRequest = supabase.from('roster').select('*').order('num');
+    const creatorsRequest = supabase.from('creators').select('*').order('num');
+
+    const creatorsTask = creatorsRequest
+      .then(({ data: creatorRows }) => {
+        if (creatorRows) {
+          setCreators(creatorRows.map(c => ({ id: c.id, num: c.num, name: c.name, handle: c.handle, platform: c.platform, type: c.type, featured: c.featured, img: c.img, link: c.link || "" })));
+        }
+      })
+      .finally(() => {
+        setCreatorsLoading(false);
       });
-      setRoster(grouped);
-    }
-    if (creatorRows) {
-      setCreators(creatorRows.map(c => ({ id: c.id, num: c.num, name: c.name, handle: c.handle, platform: c.platform, type: c.type, featured: c.featured, img: c.img, link: c.link || "" })));
-    }
-    setDataLoading(false);
+
+    const rosterTask = rosterRequest.then(({ data: rosterRows }) => {
+      if (rosterRows) {
+        const grouped = { BGMI: [], Valorant: [] };
+        rosterRows.forEach(r => {
+          if (grouped[r.game]) grouped[r.game].push({ id: r.id, num: r.num, name: r.name, real: r.real_name, role: r.role, featured: r.featured, img: r.img });
+        });
+        setRoster(grouped);
+      }
+    });
+
+    await Promise.allSettled([rosterTask, creatorsTask]);
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -1532,7 +1542,7 @@ export default function YouEsports() {
     <div key={item.id} className={`player-card ${item.featured ? "featured" : "standard"}`}>
       <div className="pc-img-area">
         {item.img
-          ? <img src={item.img} alt={item.name} />
+          ? <img src={item.img} alt={item.name} loading="lazy" decoding="async" />
           : <div className="pc-img-placeholder">{item.num}</div>
         }
         <div className="pc-num">{item.num}</div>
@@ -1684,8 +1694,8 @@ export default function YouEsports() {
                 {/* Creators tab */}
                 {adminTab === "CREATORS" && (
                   <>
-                    {dataLoading && <div className="admin-err" style={{ marginBottom: "10px" }}>Loading creators...</div>}
-                    {!dataLoading && creators.length === 0 && (
+                    {creatorsLoading && <div className="admin-err" style={{ marginBottom: "10px" }}>Loading creators...</div>}
+                    {!creatorsLoading && creators.length === 0 && (
                       <div className="admin-err" style={{ marginBottom: "10px" }}>No creators found yet. Add a creator slot below.</div>
                     )}
                     {creators.map(c => (
@@ -1750,8 +1760,7 @@ export default function YouEsports() {
         </div>
         <div className="hero-eyebrow">WELCOME TO YOUTOPIA</div>
         <h1 className="hero-title">
-          YES YOU.
-          <span className="red">CAN.</span>
+          YES <span className="red">YOU</span> CAN
         </h1>
         <p className="hero-sub">
           Priority access to limited apparel drops, private tournaments, and behind-the-scenes esports culture. Be first. Be inside.
@@ -1830,7 +1839,7 @@ export default function YouEsports() {
         </div>
 
         <div className="roster-grid">
-          {dataLoading
+          {creatorsLoading
             ? <div className="status-card">LOADING CREATORS...</div>
             : creators.length > 0
               ? creators.map(c => renderCard(c, c.platform, "VIEW CHANNEL"))
