@@ -5,7 +5,7 @@
   "homepage": "https://Aishwaryfilms.github.io/final-web",
   "scripts": {
     "dev": "vite",
-    "build:dist": "vite build && node -e \"require('fs').copyFileSync('dist/index.html', 'dist/404.html')\"",
+    "build:dist": "vite build",
     "build": "node scripts/publish-static.mjs",
     "publish:static": "node scripts/publish-static.mjs",
     "preview": "vite preview",
