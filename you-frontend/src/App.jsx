@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from './supabaseClient';
 import merchPreview from './assets/merch-preview.jpg';
 
@@ -33,6 +33,138 @@ const getPageHref = (page) => `#${page}`;
 
 const getNavLabel = (section) => NAV_LABELS[section] || section.toUpperCase();
 
+const PROFILE_ROUTE_RE = /^profile\/(roster|creator)\/(.+)$/i;
+
+const parseProfileHash = () => {
+  const hashValue = window.location.hash.replace(/^#\/?/, "");
+  const match = hashValue.match(PROFILE_ROUTE_RE);
+  if (!match) return null;
+  try {
+    return { type: match[1].toLowerCase(), id: decodeURIComponent(match[2]) };
+  } catch {
+    return null;
+  }
+};
+
+const getProfileHref = (type, id) => `#profile/${type}/${encodeURIComponent(String(id))}`;
+
+const trimText = (value) => (typeof value === "string" ? value.trim() : "");
+
+const toOptionalValue = (value) => {
+  const trimmed = trimText(value);
+  return trimmed || null;
+};
+
+const toExternalHref = (value) => {
+  const trimmed = trimText(value);
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (/^[\w.-]+\.[a-z]{2,}/i.test(trimmed)) return `https://${trimmed}`;
+  return "";
+};
+
+const getMissingColumnName = (error) => {
+  const message = String(error?.message || "");
+
+  const schemaCacheMatch = message.match(/could not find the '([^']+)' column/i);
+  if (schemaCacheMatch) return schemaCacheMatch[1];
+
+  const doesNotExistMatch = message.match(/column\s+["']?([\w.]+)["']?\s+does not exist/i);
+  if (doesNotExistMatch) {
+    const raw = doesNotExistMatch[1].replace(/"/g, "");
+    const parts = raw.split(".");
+    return parts[parts.length - 1];
+  }
+
+  return "";
+};
+
+const runWithMissingColumnFallback = async (payload, execute) => {
+  let currentPayload = { ...payload };
+  let result = await execute(currentPayload);
+  let attempts = 0;
+
+  while (result.error && attempts < 8) {
+    const missingColumn = getMissingColumnName(result.error);
+    if (!missingColumn || !(missingColumn in currentPayload)) break;
+
+    const { [missingColumn]: _removed, ...nextPayload } = currentPayload;
+    currentPayload = nextPayload;
+    result = await execute(currentPayload);
+    attempts += 1;
+  }
+
+  return result;
+};
+
+const OPTIONAL_FIELDS_STORAGE_KEY = "youesports.optionalFields.v1";
+
+const getOptionalFieldStore = () => {
+  if (typeof window === "undefined") return { roster: {}, creators: {} };
+  try {
+    const raw = window.localStorage.getItem(OPTIONAL_FIELDS_STORAGE_KEY);
+    if (!raw) return { roster: {}, creators: {} };
+
+    const parsed = JSON.parse(raw);
+    return {
+      roster: parsed?.roster && typeof parsed.roster === "object" ? parsed.roster : {},
+      creators: parsed?.creators && typeof parsed.creators === "object" ? parsed.creators : {},
+    };
+  } catch {
+    return { roster: {}, creators: {} };
+  }
+};
+
+const setOptionalFieldStore = (store) => {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(OPTIONAL_FIELDS_STORAGE_KEY, JSON.stringify(store));
+  } catch {
+    // Ignore localStorage write failures.
+  }
+};
+
+const getOptionalFieldEntry = (store, group, id) => {
+  const entry = store?.[group]?.[String(id)];
+  return entry && typeof entry === "object" ? entry : {};
+};
+
+const buildOptionalFieldEntry = (item) => ({
+  instagram: trimText(item?.instagram),
+  youtube: trimText(item?.youtube),
+  bio: trimText(item?.bio),
+});
+
+const persistOptionalFieldCache = (rosterState, creatorState) => {
+  const existing = getOptionalFieldStore();
+  const next = {
+    roster: { ...(existing.roster || {}) },
+    creators: { ...(existing.creators || {}) },
+  };
+
+  [...(rosterState.BGMI || []), ...(rosterState.Valorant || [])].forEach((player) => {
+    next.roster[String(player.id)] = buildOptionalFieldEntry(player);
+  });
+
+  (creatorState || []).forEach((creator) => {
+    next.creators[String(creator.id)] = buildOptionalFieldEntry(creator);
+  });
+
+  setOptionalFieldStore(next);
+};
+
+const removeOptionalFieldCacheEntry = (group, id) => {
+  const existing = getOptionalFieldStore();
+  if (!existing[group] || !(String(id) in existing[group])) return;
+
+  const next = {
+    roster: { ...(existing.roster || {}) },
+    creators: { ...(existing.creators || {}) },
+  };
+  delete next[group][String(id)];
+  setOptionalFieldStore(next);
+};
+
 const SocialIcon = ({ name }) => {
   switch (name) {
     case "Discord":
@@ -64,8 +196,8 @@ const SocialIcon = ({ name }) => {
     case "YouTube":
       return (
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" className="social-icon">
-          <rect x="3" y="6.5" width="18" height="11" rx="4" fill="currentColor" opacity="0.18" />
-          <path fill="currentColor" d="M10 8.5 16 12l-6 3.5v-7Z" />
+          <rect x="3" y="6" width="18" height="12" rx="4" fill="none" stroke="currentColor" strokeWidth="1.8" />
+          <path fill="currentColor" d="M10.2 8.9 15.8 12l-5.6 3.1V8.9Z" />
         </svg>
       );
     default:
@@ -657,15 +789,154 @@ const style = `
     padding: 4px 12px; border-radius: 4px;
     margin-bottom: 1rem; width: fit-content;
   }
+  .pc-socials {
+    display: flex;
+    gap: 8px;
+    margin: 0.1rem 0 0.95rem;
+  }
+  .pc-social-link {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255,255,255,0.52);
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.12);
+    transition: all 0.2s ease;
+    text-decoration: none;
+  }
+  .pc-social-link .social-icon { width: 15px; height: 15px; }
+  .pc-social-link:hover {
+    color: var(--red);
+    border-color: rgba(200,0,0,0.45);
+    background: rgba(200,0,0,0.15);
+  }
   .pc-view {
     display: inline-flex; align-items: center; gap: 6px;
     font-family: 'Space Mono', monospace;
     font-size: 10px; letter-spacing: 1px;
     color: rgba(255,255,255,0.28);
     text-decoration: none;
-    transition: color 0.2s; margin-top: auto;
+    transition: color 0.2s;
+    margin-top: auto;
   }
   .pc-view:hover { color: var(--red); }
+
+  .profile-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 900;
+    background: rgba(4,4,4,0.95);
+    backdrop-filter: blur(16px);
+    overflow-y: auto;
+    padding: 90px 1.5rem 2rem;
+  }
+  .profile-panel {
+    max-width: 1024px;
+    margin: 0 auto;
+    border-radius: 24px;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: linear-gradient(155deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+    display: grid;
+    grid-template-columns: 1fr 1.1fr;
+    overflow: hidden;
+  }
+  .profile-media {
+    min-height: 470px;
+    background: #0d0d0d;
+    position: relative;
+  }
+  .profile-media img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .profile-fallback {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 120px;
+    letter-spacing: -4px;
+    color: rgba(255,255,255,0.06);
+    background: linear-gradient(165deg, rgba(200,0,0,0.2), rgba(0,0,0,0.35));
+  }
+  .profile-content {
+    padding: 2.2rem 2.2rem 2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .profile-eyebrow {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: rgba(200,0,0,0.8);
+  }
+  .profile-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(44px, 6.5vw, 76px);
+    line-height: 0.92;
+    letter-spacing: 1.5px;
+  }
+  .profile-subtitle {
+    font-size: 13px;
+    color: rgba(255,255,255,0.55);
+  }
+  .profile-bio-title {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1.8px;
+    color: rgba(255,255,255,0.5);
+    margin-top: 0.2rem;
+  }
+  .profile-bio {
+    font-size: 14px;
+    line-height: 1.75;
+    color: rgba(255,255,255,0.72);
+    white-space: pre-line;
+  }
+  .profile-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 0.6rem;
+  }
+  .profile-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 12px;
+    border-radius: 10px;
+    color: rgba(255,255,255,0.72);
+    border: 1px solid rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.05);
+    text-decoration: none;
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1.1px;
+    transition: all 0.2s ease;
+  }
+  .profile-link .social-icon { width: 14px; height: 14px; }
+  .profile-link:hover {
+    color: #fff;
+    border-color: rgba(200,0,0,0.45);
+    background: rgba(200,0,0,0.18);
+  }
+  .profile-empty {
+    font-size: 13px;
+    color: rgba(255,255,255,0.58);
+    line-height: 1.6;
+  }
+  .profile-loading {
+    max-width: 1024px;
+    margin: 0 auto;
+  }
 
   /* SHOP */
   .coming-soon-wrap {
@@ -919,10 +1190,15 @@ const style = `
     .back-home-btn { top: 72px; left: 12px; }
     section { padding: 4rem 1.5rem; }
     .about-inner, .contact-inner { grid-template-columns: 1fr; gap: 2rem; padding: 2rem; }
+    .profile-panel { grid-template-columns: 1fr; }
+    .profile-media { min-height: 340px; }
+    .profile-content { padding: 1.5rem 1.4rem 1.4rem; }
     footer { grid-template-columns: 1fr 1fr; padding: 2rem 1.5rem; }
     .sec-divider { padding: 0 1.5rem; }
   }
   @media (max-width: 600px) {
+    .profile-overlay { padding: 80px 1rem 1.3rem; }
+    .profile-media { min-height: 280px; }
     .roster-grid { grid-template-columns: 1fr; }
     footer { grid-template-columns: 1fr; }
     .form-row { grid-template-columns: 1fr; }
@@ -1064,7 +1340,7 @@ const adminStyle = `
     font-size: 8px; letter-spacing: 1.5px; color: rgba(200,0,0,0.6);
     margin-bottom: 5px;
   }
-  .admin-field input, .admin-field select {
+  .admin-field input, .admin-field select, .admin-field textarea {
     width: 100%;
     background: rgba(255,255,255,0.04);
     border: 1px solid rgba(255,255,255,0.09);
@@ -1072,8 +1348,12 @@ const adminStyle = `
     color: #fff; font-size: 12px; font-family: 'Montserrat', sans-serif;
     outline: none; transition: border-color 0.2s;
   }
+  .admin-field textarea {
+    resize: vertical;
+    min-height: 92px;
+  }
   .admin-field select option { background: #111; color: #fff; }
-  .admin-field input:focus, .admin-field select:focus { border-color: rgba(200,0,0,0.35); }
+  .admin-field input:focus, .admin-field select:focus, .admin-field textarea:focus { border-color: rgba(200,0,0,0.35); }
   .admin-add-btn {
     width: 100%; padding: 14px;
     background: rgba(200,0,0,0.06);
@@ -1169,6 +1449,7 @@ function ImgUploadBlock({ img, onUpload, onRemove }) {
 export default function YouEsports() {
   const [activeDept, setActiveDept] = useState(0);
   const [activeNav, setActiveNav] = useState(() => getPageFromHash());
+  const [activeProfile, setActiveProfile] = useState(() => parseProfileHash());
   const [activeGame, setActiveGame] = useState("BGMI");
   const [subject, setSubject] = useState("");
 
@@ -1226,11 +1507,15 @@ export default function YouEsports() {
   const [roster, setRoster] = useState({ BGMI: [], Valorant: [] });
   const [creators, setCreators] = useState([]);
   const [creatorsLoading, setCreatorsLoading] = useState(true);
+  const [dataLoaded, setDataLoaded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
   /*  Fetch data from Supabase  */
   const fetchData = useCallback(async () => {
+    setDataLoaded(false);
     setCreatorsLoading(true);
+
+    const optionalFieldStore = getOptionalFieldStore();
 
     const rosterRequest = supabase.from('roster').select('*').order('num');
     const creatorsRequest = supabase.from('creators').select('*').order('num');
@@ -1238,7 +1523,30 @@ export default function YouEsports() {
     const creatorsTask = creatorsRequest
       .then(({ data: creatorRows }) => {
         if (creatorRows) {
-          setCreators(creatorRows.map(c => ({ id: c.id, num: c.num, name: c.name, handle: c.handle, platform: c.platform, type: c.type, featured: c.featured, img: c.img, link: c.link || "" })));
+          setCreators(creatorRows.map(c => {
+            const localOptional = getOptionalFieldEntry(optionalFieldStore, "creators", c.id);
+            const legacyLink = trimText(c.link);
+            const instagram = trimText(c.instagram)
+              || (/instagram\.com/i.test(legacyLink) ? legacyLink : "")
+              || trimText(localOptional.instagram);
+            const youtube = trimText(c.youtube)
+              || (/(youtube\.com|youtu\.be)/i.test(legacyLink) ? legacyLink : "")
+              || trimText(localOptional.youtube);
+            return {
+              id: c.id,
+              num: c.num,
+              name: c.name,
+              handle: c.handle,
+              platform: c.platform,
+              type: c.type,
+              featured: c.featured,
+              img: c.img,
+              link: legacyLink,
+              instagram,
+              youtube,
+              bio: trimText(c.bio) || trimText(localOptional.bio),
+            };
+          }));
         }
       })
       .finally(() => {
@@ -1249,13 +1557,28 @@ export default function YouEsports() {
       if (rosterRows) {
         const grouped = { BGMI: [], Valorant: [] };
         rosterRows.forEach(r => {
-          if (grouped[r.game]) grouped[r.game].push({ id: r.id, num: r.num, name: r.name, real: r.real_name, role: r.role, featured: r.featured, img: r.img });
+          if (grouped[r.game]) {
+            const localOptional = getOptionalFieldEntry(optionalFieldStore, "roster", r.id);
+            grouped[r.game].push({
+              id: r.id,
+              num: r.num,
+              name: r.name,
+              real: r.real_name,
+              role: r.role,
+              featured: r.featured,
+              img: r.img,
+              instagram: trimText(r.instagram) || trimText(localOptional.instagram),
+              youtube: trimText(r.youtube) || trimText(localOptional.youtube),
+              bio: trimText(r.bio) || trimText(localOptional.bio),
+            });
+          }
         });
         setRoster(grouped);
       }
     });
 
     await Promise.allSettled([rosterTask, creatorsTask]);
+    setDataLoaded(true);
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -1300,12 +1623,75 @@ export default function YouEsports() {
     return String(maxNum + 1).padStart(2, "0");
   };
 
+  const buildRosterPayload = (game, player, includeOptional = true) => {
+    const payload = {
+      game,
+      num: player.num,
+      name: player.name,
+      real_name: player.real,
+      role: player.role,
+      img: player.img || null,
+    };
+    if (includeOptional) {
+      payload.instagram = toOptionalValue(player.instagram);
+      payload.youtube = toOptionalValue(player.youtube);
+      payload.bio = toOptionalValue(player.bio);
+    }
+    return payload;
+  };
+
+  const buildCreatorPayload = (creator, includeOptional = true) => {
+    const instagram = toOptionalValue(creator.instagram);
+    const youtube = toOptionalValue(creator.youtube);
+    const payload = {
+      num: creator.num,
+      name: creator.name,
+      handle: creator.handle,
+      platform: creator.platform,
+      type: creator.type,
+      img: creator.img || null,
+      link: youtube || instagram || toOptionalValue(creator.link),
+    };
+    if (includeOptional) {
+      payload.instagram = instagram;
+      payload.youtube = youtube;
+      payload.bio = toOptionalValue(creator.bio);
+    }
+    return payload;
+  };
+
+  const updateRosterRow = async (player, game) => {
+    return runWithMissingColumnFallback(
+      buildRosterPayload(game, player, true),
+      (payload) => supabase.from('roster').update(payload).eq('id', player.id)
+    );
+  };
+
+  const updateCreatorRow = async (creator) => {
+    return runWithMissingColumnFallback(
+      buildCreatorPayload(creator, true),
+      (payload) => supabase.from('creators').update(payload).eq('id', creator.id)
+    );
+  };
+
   const addPlayer = async (game) => {
     setAdminOpErr("");
     setAdminLoading(true);
     const num = getNextNum(roster[game]);
-    const { error } = await supabase.from('roster')
-      .insert({ game, num, name: "New Player", real_name: "Real Name", role: "ROLE", featured: false, img: null });
+    const newPlayer = {
+      num,
+      name: "New Player",
+      real: "Real Name",
+      role: "ROLE",
+      img: null,
+      instagram: "",
+      youtube: "",
+      bio: "",
+    };
+    const { error } = await runWithMissingColumnFallback(
+      buildRosterPayload(game, newPlayer, true),
+      (payload) => supabase.from('roster').insert(payload)
+    );
     if (error) {
       setAdminLoading(false);
       setAdminOpErr("Add failed: " + error.message);
@@ -1324,6 +1710,7 @@ export default function YouEsports() {
       setAdminOpErr("Remove failed: " + error.message);
       return;
     }
+    removeOptionalFieldCacheEntry("roster", id);
     await fetchData();
     setAdminLoading(false);
   };
@@ -1336,8 +1723,22 @@ export default function YouEsports() {
     setAdminOpErr("");
     setAdminLoading(true);
     const num = getNextNum(creators);
-    const { error } = await supabase.from('creators')
-      .insert({ num, name: "New Creator", handle: "@handle", platform: "YouTube", type: "CONTENT CREATOR", featured: false, img: null, link: null });
+    const newCreator = {
+      num,
+      name: "New Creator",
+      handle: "@handle",
+      platform: "YouTube",
+      type: "CONTENT CREATOR",
+      img: null,
+      link: null,
+      instagram: "",
+      youtube: "",
+      bio: "",
+    };
+    const { error } = await runWithMissingColumnFallback(
+      buildCreatorPayload(newCreator, true),
+      (payload) => supabase.from('creators').insert(payload)
+    );
     if (error) {
       setAdminLoading(false);
       setAdminOpErr("Add failed: " + error.message);
@@ -1356,6 +1757,7 @@ export default function YouEsports() {
       setAdminOpErr("Remove failed: " + error.message);
       return;
     }
+    removeOptionalFieldCacheEntry("creators", id);
     await fetchData();
     setAdminLoading(false);
   };
@@ -1365,14 +1767,13 @@ export default function YouEsports() {
     const allPlayers = [...(roster.BGMI || []), ...(roster.Valorant || [])];
     const rosterResults = await Promise.all(allPlayers.map(p => {
       const game = Object.keys(roster).find(g => roster[g].some(r => r.id === p.id));
-      return supabase.from('roster').update({ game, num: p.num, name: p.name, real_name: p.real, role: p.role, img: p.img || null }).eq('id', p.id);
+      return updateRosterRow(p, game);
     }));
-    const creatorResults = await Promise.all(creators.map(c =>
-      supabase.from('creators').update({ num: c.num, name: c.name, handle: c.handle, platform: c.platform, type: c.type, img: c.img || null, link: c.link || null }).eq('id', c.id)
-    ));
+    const creatorResults = await Promise.all(creators.map(c => updateCreatorRow(c)));
     const anyError = [...rosterResults, ...creatorResults].find(r => r.error);
     setAdminLoading(false);
     if (anyError) { setAdminOpErr("Save failed: " + anyError.error.message); return; }
+    persistOptionalFieldCache(roster, creators);
     setAdminSaved(true);
     setTimeout(() => setAdminSaved(false), 2500);
   };
@@ -1380,7 +1781,9 @@ export default function YouEsports() {
   /* Keep nav highlight in sync with section hash */
   useEffect(() => {
     const syncFromHash = () => {
-      setActiveNav(getPageFromHash());
+      const profileRoute = parseProfileHash();
+      setActiveProfile(profileRoute);
+      setActiveNav(profileRoute ? "home" : getPageFromHash());
       setMenuOpen(false);
     };
 
@@ -1534,11 +1937,40 @@ export default function YouEsports() {
   }, [roster.BGMI.length, roster.Valorant.length, creators.length]);
 
   const handleDeptClick = (i) => { setActiveDept(i); setSubject(depts[i].title); };
-  const players = roster[activeGame];
+  const players = roster[activeGame] || [];
   const socialLinks = SOCIAL_LINKS.filter(s => s.href);
+  const profileReturnHref = activeProfile?.type === "creator" ? getPageHref("creators") : getPageHref("roster");
+
+  const profileRecord = useMemo(() => {
+    if (!activeProfile) return null;
+    const targetId = String(activeProfile.id);
+    if (activeProfile.type === "creator") {
+      const creator = creators.find(c => String(c.id) === targetId);
+      return creator ? { ...creator, profileType: "creator" } : null;
+    }
+    const rosterEntries = [
+      ...(roster.BGMI || []).map(player => ({ ...player, game: "BGMI" })),
+      ...(roster.Valorant || []).map(player => ({ ...player, game: "Valorant" })),
+    ];
+    const player = rosterEntries.find(entry => String(entry.id) === targetId);
+    return player ? { ...player, profileType: "roster" } : null;
+  }, [activeProfile, creators, roster]);
+
+  const profileSocials = profileRecord
+    ? [
+        { name: "Instagram", href: toExternalHref(profileRecord.instagram) },
+        { name: "YouTube", href: toExternalHref(profileRecord.youtube) },
+      ].filter(link => link.href)
+    : [];
 
   /*  Shared card renderer  */
-  const renderCard = (item, label, linkText) => (
+  const renderCard = (item, label, type) => {
+    const cardSocials = [
+      { name: "Instagram", href: toExternalHref(item.instagram) },
+      { name: "YouTube", href: toExternalHref(item.youtube) },
+    ].filter(link => link.href);
+
+    return (
     <div key={item.id} className={`player-card ${item.featured ? "featured" : "standard"}`}>
       <div className="pc-img-area">
         {item.img
@@ -1557,10 +1989,20 @@ export default function YouEsports() {
         </div>
         <div className="pc-real">{item.real || item.handle}</div>
         <div className="pc-role">{item.role || item.type}</div>
-        <a href={item.link || "#"} className="pc-view" target={item.link ? "_blank" : "_self"} rel="noopener noreferrer">{linkText} -&gt;</a>
+        {cardSocials.length > 0 && (
+          <div className="pc-socials">
+            {cardSocials.map(link => (
+              <a key={link.name} href={link.href} className="pc-social-link" target="_blank" rel="noopener noreferrer" aria-label={`${item.name} on ${link.name}`}>
+                <SocialIcon name={link.name} />
+              </a>
+            ))}
+          </div>
+        )}
+        <a href={getProfileHref(type, item.id)} className="pc-view">VIEW PROFILE -&gt;</a>
       </div>
     </div>
-  );
+    );
+  };
 
   return (
     <div className="ye-root">
@@ -1684,6 +2126,18 @@ export default function YouEsports() {
                             <label>ROLE</label>
                             <input value={p.role} onChange={e => updatePlayer(adminTab, p.id, "role", e.target.value)} placeholder="e.g. ASSAULTER" />
                           </div>
+                          <div className="admin-field">
+                            <label>INSTAGRAM LINK (OPTIONAL)</label>
+                            <input value={p.instagram || ""} onChange={e => updatePlayer(adminTab, p.id, "instagram", e.target.value)} placeholder="https://instagram.com/username" />
+                          </div>
+                          <div className="admin-field">
+                            <label>YOUTUBE LINK (OPTIONAL)</label>
+                            <input value={p.youtube || ""} onChange={e => updatePlayer(adminTab, p.id, "youtube", e.target.value)} placeholder="https://youtube.com/@channel" />
+                          </div>
+                          <div className="admin-field" style={{ gridColumn: "1 / -1" }}>
+                            <label>BIO / ABOUT (PROFILE PAGE ONLY)</label>
+                            <textarea value={p.bio || ""} onChange={e => updatePlayer(adminTab, p.id, "bio", e.target.value)} placeholder="Short background, achievements, style, or story." />
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -1732,9 +2186,17 @@ export default function YouEsports() {
                             <label>CONTENT TYPE</label>
                             <input value={c.type} onChange={e => updateCreator(c.id, "type", e.target.value)} placeholder="e.g. GAMEPLAY" />
                           </div>
+                          <div className="admin-field">
+                            <label>INSTAGRAM LINK (OPTIONAL)</label>
+                            <input value={c.instagram || ""} onChange={e => updateCreator(c.id, "instagram", e.target.value)} placeholder="https://instagram.com/username" />
+                          </div>
+                          <div className="admin-field">
+                            <label>YOUTUBE LINK (OPTIONAL)</label>
+                            <input value={c.youtube || ""} onChange={e => updateCreator(c.id, "youtube", e.target.value)} placeholder="https://youtube.com/@channel" />
+                          </div>
                           <div className="admin-field" style={{ gridColumn: "1 / -1" }}>
-                            <label>CHANNEL / PROFILE LINK</label>
-                            <input value={c.link || ""} onChange={e => updateCreator(c.id, "link", e.target.value)} placeholder="https://youtube.com/@channel" />
+                            <label>BIO / ABOUT (PROFILE PAGE ONLY)</label>
+                            <textarea value={c.bio || ""} onChange={e => updateCreator(c.id, "bio", e.target.value)} placeholder="Tell visitors about this creator when they open the profile page." />
                           </div>
                         </div>
                       </div>
@@ -1750,6 +2212,63 @@ export default function YouEsports() {
               </>
             )}
           </div>
+        </div>
+      )}
+
+      {activeProfile && (
+        <div className="profile-overlay">
+          <a href={profileReturnHref} className="back-home-btn">
+            <span className="arr">&lt;</span>
+            {activeProfile.type === "creator" ? "BACK TO CREATORS" : "BACK TO ROSTER"}
+          </a>
+
+          {!dataLoaded ? (
+            <div className="status-card profile-loading">LOADING PROFILE...</div>
+          ) : !profileRecord ? (
+            <div className="profile-panel">
+              <div className="profile-media">
+                <div className="profile-fallback">?</div>
+              </div>
+              <div className="profile-content">
+                <div className="profile-eyebrow">PROFILE</div>
+                <h2 className="profile-title">NOT FOUND</h2>
+                <p className="profile-empty">This profile could not be found. It may have been removed or its link changed.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="profile-panel">
+              <div className="profile-media">
+                {profileRecord.img
+                  ? <img src={profileRecord.img} alt={profileRecord.name} loading="lazy" decoding="async" />
+                  : <div className="profile-fallback">{profileRecord.num || "YOU"}</div>
+                }
+              </div>
+              <div className="profile-content">
+                <div className="profile-eyebrow">
+                  {profileRecord.profileType === "creator" ? "CREATOR PROFILE" : `${profileRecord.game} ROSTER PROFILE`}
+                </div>
+                <h2 className="profile-title">{profileRecord.name}</h2>
+                <div className="profile-subtitle">{profileRecord.real || profileRecord.handle || "YOU eSports"}</div>
+                <div className="pc-role">{profileRecord.role || profileRecord.type || "MEMBER"}</div>
+
+                <div className="profile-bio-title">BIO / ABOUT</div>
+                <p className="profile-bio">{trimText(profileRecord.bio) || "Bio will be added soon."}</p>
+
+                {profileSocials.length > 0 ? (
+                  <div className="profile-links">
+                    {profileSocials.map(link => (
+                      <a key={link.name} href={link.href} className="profile-link" target="_blank" rel="noopener noreferrer" aria-label={`${profileRecord.name} on ${link.name}`}>
+                        <SocialIcon name={link.name} />
+                        <span>{link.name.toUpperCase()}</span>
+                      </a>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="profile-empty">No social links were added for this profile.</p>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1820,7 +2339,7 @@ export default function YouEsports() {
         </div>
 
         <div className="roster-grid">
-          {players.map(p => renderCard(p, activeGame, "VIEW PROFILE"))}
+          {players.map(p => renderCard(p, activeGame, "roster"))}
         </div>
       </section>
 
@@ -1842,7 +2361,7 @@ export default function YouEsports() {
           {creatorsLoading
             ? <div className="status-card">LOADING CREATORS...</div>
             : creators.length > 0
-              ? creators.map(c => renderCard(c, c.platform, "VIEW CHANNEL"))
+              ? creators.map(c => renderCard(c, c.platform, "creator"))
               : <div className="status-card">NO CREATORS FOUND YET.</div>
           }
         </div>
