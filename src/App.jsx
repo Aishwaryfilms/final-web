@@ -25,7 +25,7 @@ const CONTACT_INFO_ITEMS = [
   { type: "hours", label: "HOURS", value: "Mon-Sat - 10 AM - 7 PM IST" },
 ];
 
-const RECAPTCHA_SITE_KEY = (import.meta.env.VITE_RECAPTCHA_SITE_KEY || "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI").trim();
+const RECAPTCHA_SITE_KEY = (import.meta.env.VITE_RECAPTCHA_SITE_KEY || "6LePX7csAAAAAGsqN-K8S458gxxqnGBUfGvlk7Ko").trim();
 
 const getPageFromHash = () => {
   const page = window.location.hash.replace(/^#\/?/, "");
