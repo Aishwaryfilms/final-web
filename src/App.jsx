@@ -67,6 +67,93 @@ const toExternalHref = (value) => {
   return "";
 };
 
+const toInstagramHref = (value) => {
+  const trimmed = trimText(value);
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+
+  const normalized = trimmed
+    .replace(/^www\./i, "")
+    .replace(/^instagram\.com\//i, "")
+    .replace(/^@+/, "")
+    .split(/[/?#]/)[0];
+
+  return normalized ? `https://instagram.com/${normalized}` : "";
+};
+
+const toYouTubeHref = (value) => {
+  const trimmed = trimText(value);
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+
+  const normalized = trimmed
+    .replace(/^www\./i, "")
+    .replace(/^(youtube\.com|youtu\.be)\//i, "");
+
+  if (!normalized) return "";
+
+  if (normalized.startsWith("@")) {
+    const handle = normalized.split(/[/?#]/)[0];
+    return handle ? `https://youtube.com/${handle}` : "";
+  }
+
+  if (/^(channel|c|user|shorts)\//i.test(normalized)) {
+    const path = normalized.split(/[?#]/)[0];
+    return `https://youtube.com/${path}`;
+  }
+
+  const slug = normalized.split(/[/?#]/)[0];
+  return slug ? `https://youtube.com/@${slug}` : "";
+};
+
+const CREATOR_LINK_META_PREFIX = "you-meta://";
+
+const parseCreatorStoredLink = (value) => {
+  const raw = trimText(value);
+  if (!raw) {
+    return { primaryLink: "", instagram: "", youtube: "", bio: "" };
+  }
+
+  if (!raw.startsWith(CREATOR_LINK_META_PREFIX)) {
+    return { primaryLink: raw, instagram: "", youtube: "", bio: "" };
+  }
+
+  try {
+    const parsed = JSON.parse(decodeURIComponent(raw.slice(CREATOR_LINK_META_PREFIX.length)));
+    return {
+      primaryLink: trimText(parsed?.primaryLink || parsed?.link),
+      instagram: trimText(parsed?.instagram),
+      youtube: trimText(parsed?.youtube),
+      bio: trimText(parsed?.bio),
+    };
+  } catch {
+    return { primaryLink: "", instagram: "", youtube: "", bio: "" };
+  }
+};
+
+const buildCreatorStoredLink = ({ link, instagram, youtube, bio }) => {
+  const base = parseCreatorStoredLink(link);
+  const normalized = {
+    primaryLink: trimText(youtube) || trimText(instagram) || trimText(base.primaryLink),
+    instagram: trimText(instagram) || trimText(base.instagram),
+    youtube: trimText(youtube) || trimText(base.youtube),
+    bio: trimText(bio) || trimText(base.bio),
+  };
+
+  const needsMeta = Boolean(
+    normalized.bio
+      || (normalized.instagram && normalized.youtube)
+      || (normalized.instagram && normalized.primaryLink && !/instagram\.com/i.test(normalized.primaryLink))
+      || (normalized.youtube && normalized.primaryLink && !/(youtube\.com|youtu\.be)/i.test(normalized.primaryLink))
+  );
+
+  if (!needsMeta) {
+    return toOptionalValue(normalized.primaryLink);
+  }
+
+  return `${CREATOR_LINK_META_PREFIX}${encodeURIComponent(JSON.stringify(normalized))}`;
+};
+
 const getMissingColumnName = (error) => {
   const message = String(error?.message || "");
 
@@ -1593,12 +1680,16 @@ export default function YouEsports() {
         if (creatorRows) {
           setCreators(creatorRows.map(c => {
             const localOptional = getOptionalFieldEntry(optionalFieldStore, "creators", c.id);
-            const legacyLink = trimText(c.link);
+            const rawLink = trimText(c.link);
+            const storedMeta = parseCreatorStoredLink(rawLink);
+            const resolvedLink = trimText(storedMeta.primaryLink) || rawLink;
             const instagram = trimText(c.instagram)
-              || (/instagram\.com/i.test(legacyLink) ? legacyLink : "")
+              || trimText(storedMeta.instagram)
+              || (/instagram\.com/i.test(resolvedLink) ? resolvedLink : "")
               || trimText(localOptional.instagram);
             const youtube = trimText(c.youtube)
-              || (/(youtube\.com|youtu\.be)/i.test(legacyLink) ? legacyLink : "")
+              || trimText(storedMeta.youtube)
+              || (/(youtube\.com|youtu\.be)/i.test(resolvedLink) ? resolvedLink : "")
               || trimText(localOptional.youtube);
             return {
               id: c.id,
@@ -1609,10 +1700,10 @@ export default function YouEsports() {
               type: c.type,
               featured: c.featured,
               img: c.img,
-              link: legacyLink,
+              link: resolvedLink,
               instagram,
               youtube,
-              bio: trimText(c.bio) || trimText(localOptional.bio),
+              bio: trimText(c.bio) || trimText(storedMeta.bio) || trimText(localOptional.bio),
             };
           }));
         }
@@ -1692,6 +1783,8 @@ export default function YouEsports() {
   };
 
   const buildRosterPayload = (game, player, includeOptional = true) => {
+    const instagram = toOptionalValue(toInstagramHref(player.instagram) || player.instagram);
+    const youtube = toOptionalValue(toYouTubeHref(player.youtube) || player.youtube);
     const payload = {
       game,
       num: player.num,
@@ -1701,16 +1794,17 @@ export default function YouEsports() {
       img: player.img || null,
     };
     if (includeOptional) {
-      payload.instagram = toOptionalValue(player.instagram);
-      payload.youtube = toOptionalValue(player.youtube);
+      payload.instagram = instagram;
+      payload.youtube = youtube;
       payload.bio = toOptionalValue(player.bio);
     }
     return payload;
   };
 
   const buildCreatorPayload = (creator, includeOptional = true) => {
-    const instagram = toOptionalValue(creator.instagram);
-    const youtube = toOptionalValue(creator.youtube);
+    const instagram = toOptionalValue(toInstagramHref(creator.instagram) || creator.instagram);
+    const youtube = toOptionalValue(toYouTubeHref(creator.youtube) || creator.youtube);
+    const bio = toOptionalValue(creator.bio);
     const payload = {
       num: creator.num,
       name: creator.name,
@@ -1718,12 +1812,17 @@ export default function YouEsports() {
       platform: creator.platform,
       type: creator.type,
       img: creator.img || null,
-      link: youtube || instagram || toOptionalValue(creator.link),
+      link: buildCreatorStoredLink({
+        link: creator.link,
+        instagram,
+        youtube,
+        bio,
+      }),
     };
     if (includeOptional) {
       payload.instagram = instagram;
       payload.youtube = youtube;
-      payload.bio = toOptionalValue(creator.bio);
+      payload.bio = bio;
     }
     return payload;
   };
@@ -2041,16 +2140,16 @@ export default function YouEsports() {
 
   const profileSocials = profileRecord
     ? [
-        { name: "Instagram", href: toExternalHref(profileRecord.instagram) },
-        { name: "YouTube", href: toExternalHref(profileRecord.youtube) },
+        { name: "Instagram", href: toInstagramHref(profileRecord.instagram) },
+        { name: "YouTube", href: toYouTubeHref(profileRecord.youtube) },
       ].filter(link => link.href)
     : [];
 
   /*  Shared card renderer  */
   const renderCard = (item, label, type) => {
     const cardSocials = [
-      { name: "Instagram", href: toExternalHref(item.instagram) },
-      { name: "YouTube", href: toExternalHref(item.youtube) },
+      { name: "Instagram", href: toInstagramHref(item.instagram) },
+      { name: "YouTube", href: toYouTubeHref(item.youtube) },
     ].filter(link => link.href);
 
     return (
