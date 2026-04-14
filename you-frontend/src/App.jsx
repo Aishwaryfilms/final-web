@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import ReCAPTCHA from "react-google-recaptcha";
+import "altcha";
 import { supabase } from './supabaseClient';
 import merchPreview from './assets/merch-preview.jpg';
 
@@ -25,7 +25,8 @@ const CONTACT_INFO_ITEMS = [
   { type: "hours", label: "HOURS", value: "Mon-Sat - 10 AM - 7 PM IST" },
 ];
 
-const RECAPTCHA_SITE_KEY = (import.meta.env.VITE_RECAPTCHA_SITE_KEY || "6LePX7csAAAAAGsqN-K8S458gxxqnGBUfGvlk7Ko").trim();
+const ALTCHA_CHALLENGE_URL = (import.meta.env.VITE_ALTCHA_CHALLENGE_URL || "").trim();
+const ALTCHA_CONFIGURATION = '{"test":true}';
 
 const getPageFromHash = () => {
   const page = window.location.hash.replace(/^#\/?/, "");
@@ -1083,11 +1084,19 @@ const style = `
     transition: transform 0.2s ease, box-shadow 0.2s ease;
   }
   .send-btn:hover { transform: translateY(-2px); box-shadow: 0 0 48px rgba(200,0,0,0.4); }
-  .recaptcha-wrap {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 78px;
+  .altcha-wrap {
+    align-self: flex-start;
+    width: fit-content;
+    max-width: 100%;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+  .altcha-wrap altcha-widget {
+    width: auto;
+    max-width: 100%;
+    display: block;
   }
   .form-note { font-size: 11px; color: rgba(255,255,255,0.18); text-align: center; }
   .resp-badge {
@@ -1193,6 +1202,13 @@ const style = `
   }
 
   @media (max-width: 900px) {
+    html { scroll-behavior: auto; }
+    .card, .reveal, .wipe {
+      opacity: 1 !important;
+      transform: none !important;
+      transition: none !important;
+      clip-path: inset(0 0 0 0) !important;
+    }
     .nav { padding: 0 1.5rem; }
     .nav-links { display: none; }
     .hamburger { display: inline-flex; }
@@ -1211,7 +1227,6 @@ const style = `
     .roster-grid { grid-template-columns: 1fr; }
     footer { grid-template-columns: 1fr; }
     .form-row { grid-template-columns: 1fr; }
-    .recaptcha-wrap { justify-content: flex-start; overflow-x: auto; }
     .dept-grid { grid-template-columns: 1fr; }
   }
 `;
@@ -1469,12 +1484,44 @@ export default function YouEsports() {
   const [formPhone, setFormPhone] = useState("");
   const [formMessage, setFormMessage] = useState("");
   const [formStatus, setFormStatus] = useState(""); // "", "sending", "sent", "error"
-  const [captchaToken, setCaptchaToken] = useState("");
-  const recaptchaRef = useRef(null);
+  const [altchaPayload, setAltchaPayload] = useState("");
+  const altchaWidgetRef = useRef(null);
+
+  useEffect(() => {
+    const widget = altchaWidgetRef.current;
+    if (!widget) return;
+
+    const onStateChange = (event) => {
+      const state = event?.detail?.state || "";
+      const payload = event?.detail?.payload || "";
+
+      if (state === "verified" && payload) {
+        setAltchaPayload(payload);
+        setFormStatus((current) => (current === "captcha" ? "" : current));
+        return;
+      }
+
+      if (state === "unverified" || state === "expired" || state === "error") {
+        setAltchaPayload("");
+      }
+    };
+
+    const onExpired = () => {
+      setAltchaPayload("");
+    };
+
+    widget.addEventListener("statechange", onStateChange);
+    widget.addEventListener("expired", onExpired);
+
+    return () => {
+      widget.removeEventListener("statechange", onStateChange);
+      widget.removeEventListener("expired", onExpired);
+    };
+  }, []);
 
   const handleContactSubmit = async (e) => {
     e.preventDefault();
-    if (!captchaToken) {
+    if (!altchaPayload) {
       setFormStatus("captcha");
       setTimeout(() => setFormStatus(""), 4000);
       return;
@@ -1494,15 +1541,14 @@ export default function YouEsports() {
           message: formMessage,
           _subject: `[YOU eSports] ${subject || depts[activeDept]?.title || "New Inquiry"}`,
           _template: "table",
-          _captcha: "true",
-          "g-recaptcha-response": captchaToken,
+          altcha: altchaPayload,
         }),
       });
       if (res.ok) {
         setFormStatus("sent");
         setFormName(""); setFormEmail(""); setFormPhone(""); setFormMessage(""); setSubject("");
-        setCaptchaToken("");
-        recaptchaRef.current?.reset();
+        setAltchaPayload("");
+        altchaWidgetRef.current?.reset?.();
         setTimeout(() => setFormStatus(""), 5000);
       } else {
         setFormStatus("error");
@@ -1820,7 +1866,8 @@ export default function YouEsports() {
   useEffect(() => {
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     const hasFinePointer = window.matchMedia("(pointer: fine)");
-    if (prefersReducedMotion.matches || !hasFinePointer.matches) return;
+    const isMobileViewport = window.matchMedia("(max-width: 900px)");
+    if (prefersReducedMotion.matches || !hasFinePointer.matches || isMobileViewport.matches) return;
 
     let rafId = 0;
     let currentY = window.scrollY;
@@ -1863,7 +1910,7 @@ export default function YouEsports() {
     };
 
     const onWheel = (event) => {
-      if (event.ctrlKey || shouldBypassSmoothScroll(event.target)) return;
+      if (isMobileViewport.matches || event.ctrlKey || shouldBypassSmoothScroll(event.target)) return;
 
       const verticalScroll = Math.abs(event.deltaY) >= Math.abs(event.deltaX);
       if (!verticalScroll) return;
@@ -1885,6 +1932,15 @@ export default function YouEsports() {
     };
 
     const onResize = () => {
+      if (isMobileViewport.matches) {
+        if (rafId) {
+          window.cancelAnimationFrame(rafId);
+          rafId = 0;
+        }
+        currentY = window.scrollY;
+        targetY = window.scrollY;
+        return;
+      }
       currentY = clampY(currentY);
       targetY = clampY(targetY);
     };
@@ -1903,12 +1959,17 @@ export default function YouEsports() {
 
   // Add .visible as elements enter the viewport (no animation library required).
   useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-
     const targets = Array.from(
       document.querySelectorAll(".card:not(.visible), .reveal:not(.visible), .wipe:not(.visible)")
     );
     if (!targets.length) return;
+
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const isMobileViewport = window.matchMedia("(max-width: 900px)").matches;
+    if (prefersReducedMotion || isMobileViewport) {
+      targets.forEach((target) => target.classList.add("visible"));
+      return;
+    }
 
     const pendingTargets = [];
     targets.forEach((target) => {
@@ -2478,19 +2539,16 @@ export default function YouEsports() {
               <input className="finput" type="tel" placeholder="+91 00000 00000" value={formPhone} onChange={e => setFormPhone(e.target.value)} />
               <input className="finput" type="text" placeholder="Brief subject line" value={subject} onChange={e => setSubject(e.target.value)} />
             </div>
-            <div className="recaptcha-wrap">
-              <ReCAPTCHA
-                ref={recaptchaRef}
-                sitekey={RECAPTCHA_SITE_KEY}
-                onChange={(token) => {
-                  setCaptchaToken(token || "");
-                  if (token && formStatus === "captcha") setFormStatus("");
-                }}
-                onExpired={() => setCaptchaToken("")}
-                onErrored={() => setCaptchaToken("")}
-              />
-            </div>
             <textarea className="finput" placeholder="Tell us about your inquiry in detail..." required value={formMessage} onChange={e => setFormMessage(e.target.value)} />
+            <div className="altcha-wrap">
+              <altcha-widget
+                ref={altchaWidgetRef}
+                auto="off"
+                {...(ALTCHA_CHALLENGE_URL
+                  ? { challenge: ALTCHA_CHALLENGE_URL }
+                  : { configuration: ALTCHA_CONFIGURATION })}
+              ></altcha-widget>
+            </div>
             <button className="send-btn" type="submit" disabled={formStatus === "sending"}>
               {formStatus === "sending" ? "SENDING..." : formStatus === "sent" ? "MESSAGE SENT!" : "SEND MESSAGE"}
             </button>
@@ -2506,7 +2564,7 @@ export default function YouEsports() {
             )}
             {formStatus === "captcha" && (
               <p className="form-note" style={{ color: "#ffbf47" }}>
-                Please complete reCAPTCHA before sending your message.
+                Please complete ALTCHA before sending your message.
               </p>
             )}
             {!formStatus && (

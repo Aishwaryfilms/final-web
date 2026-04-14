@@ -42,7 +42,6 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-          VITE_RECAPTCHA_SITE_KEY: 6LePX7csAAAAAGsqN-K8S458gxxqnGBUfGvlk7Ko
 
       - name: Disable Jekyll
         run: touch dist/.nojekyll
