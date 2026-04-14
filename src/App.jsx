@@ -1573,6 +1573,7 @@ export default function YouEsports() {
   const [formStatus, setFormStatus] = useState(""); // "", "sending", "sent", "error"
   const [altchaPayload, setAltchaPayload] = useState("");
   const altchaWidgetRef = useRef(null);
+  const creatorAutoSyncRef = useRef(new Set());
 
   useEffect(() => {
     const widget = altchaWidgetRef.current;
@@ -1944,6 +1945,78 @@ export default function YouEsports() {
     setAdminSaved(true);
     setTimeout(() => setAdminSaved(false), 2500);
   };
+
+  // If optional creator fields exist only in local cache, sync them to Supabase so mobile sees the same data.
+  useEffect(() => {
+    if (!dataLoaded || !creators.length) return;
+
+    const optionalStore = getOptionalFieldStore();
+    const pending = creators
+      .map((creator) => {
+        const localOptional = getOptionalFieldEntry(optionalStore, "creators", creator.id);
+        const localInstagram = trimText(localOptional.instagram);
+        const localYoutube = trimText(localOptional.youtube);
+        const localBio = trimText(localOptional.bio);
+        if (!localInstagram && !localYoutube && !localBio) return null;
+
+        const idKey = String(creator.id);
+        if (creatorAutoSyncRef.current.has(idKey)) return null;
+
+        const normalizedInstagram = toOptionalValue(
+          toInstagramHref(creator.instagram || localInstagram) || creator.instagram || localInstagram
+        );
+        const normalizedYoutube = toOptionalValue(
+          toYouTubeHref(creator.youtube || localYoutube) || creator.youtube || localYoutube
+        );
+        const normalizedBio = toOptionalValue(creator.bio || localBio);
+
+        const nextLink = buildCreatorStoredLink({
+          link: creator.link,
+          instagram: normalizedInstagram,
+          youtube: normalizedYoutube,
+          bio: normalizedBio,
+        });
+
+        if (!trimText(nextLink) || trimText(nextLink) === trimText(creator.link)) return null;
+
+        return {
+          id: creator.id,
+          idKey,
+          payload: {
+            link: nextLink,
+            instagram: normalizedInstagram,
+            youtube: normalizedYoutube,
+            bio: normalizedBio,
+          },
+        };
+      })
+      .filter(Boolean);
+
+    if (!pending.length) return;
+
+    let cancelled = false;
+    const syncLocalCreatorFields = async () => {
+      await Promise.all(
+        pending.map(async ({ id, idKey, payload }) => {
+          creatorAutoSyncRef.current.add(idKey);
+          await runWithMissingColumnFallback(
+            payload,
+            (nextPayload) => supabase.from('creators').update(nextPayload).eq('id', id)
+          );
+        })
+      );
+
+      if (!cancelled) {
+        await fetchData();
+      }
+    };
+
+    syncLocalCreatorFields();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [creators, dataLoaded, fetchData]);
 
   /* Keep nav highlight in sync with section hash */
   useEffect(() => {
