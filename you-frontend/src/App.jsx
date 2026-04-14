@@ -1672,6 +1672,7 @@ export default function YouEsports() {
     setCreatorsLoading(true);
 
     const optionalFieldStore = getOptionalFieldStore();
+    const includeLocalFallback = adminAuthed;
 
     const rosterRequest = supabase.from('roster').select('*').order('num');
     const creatorsRequest = supabase.from('creators').select('*').order('num');
@@ -1681,17 +1682,20 @@ export default function YouEsports() {
         if (creatorRows) {
           setCreators(creatorRows.map(c => {
             const localOptional = getOptionalFieldEntry(optionalFieldStore, "creators", c.id);
+            const localInstagram = includeLocalFallback ? trimText(localOptional.instagram) : "";
+            const localYoutube = includeLocalFallback ? trimText(localOptional.youtube) : "";
+            const localBio = includeLocalFallback ? trimText(localOptional.bio) : "";
             const rawLink = trimText(c.link);
             const storedMeta = parseCreatorStoredLink(rawLink);
             const resolvedLink = trimText(storedMeta.primaryLink) || rawLink;
             const instagram = trimText(c.instagram)
               || trimText(storedMeta.instagram)
               || (/instagram\.com/i.test(resolvedLink) ? resolvedLink : "")
-              || trimText(localOptional.instagram);
+              || localInstagram;
             const youtube = trimText(c.youtube)
               || trimText(storedMeta.youtube)
               || (/(youtube\.com|youtu\.be)/i.test(resolvedLink) ? resolvedLink : "")
-              || trimText(localOptional.youtube);
+              || localYoutube;
             return {
               id: c.id,
               num: c.num,
@@ -1704,7 +1708,7 @@ export default function YouEsports() {
               link: resolvedLink,
               instagram,
               youtube,
-              bio: trimText(c.bio) || trimText(storedMeta.bio) || trimText(localOptional.bio),
+              bio: trimText(c.bio) || trimText(storedMeta.bio) || localBio,
             };
           }));
         }
@@ -1719,6 +1723,9 @@ export default function YouEsports() {
         rosterRows.forEach(r => {
           if (grouped[r.game]) {
             const localOptional = getOptionalFieldEntry(optionalFieldStore, "roster", r.id);
+            const localInstagram = includeLocalFallback ? trimText(localOptional.instagram) : "";
+            const localYoutube = includeLocalFallback ? trimText(localOptional.youtube) : "";
+            const localBio = includeLocalFallback ? trimText(localOptional.bio) : "";
             grouped[r.game].push({
               id: r.id,
               num: r.num,
@@ -1727,9 +1734,9 @@ export default function YouEsports() {
               role: r.role,
               featured: r.featured,
               img: r.img,
-              instagram: trimText(r.instagram) || trimText(localOptional.instagram),
-              youtube: trimText(r.youtube) || trimText(localOptional.youtube),
-              bio: trimText(r.bio) || trimText(localOptional.bio),
+              instagram: trimText(r.instagram) || localInstagram,
+              youtube: trimText(r.youtube) || localYoutube,
+              bio: trimText(r.bio) || localBio,
             });
           }
         });
@@ -1739,7 +1746,7 @@ export default function YouEsports() {
 
     await Promise.allSettled([rosterTask, creatorsTask]);
     setDataLoaded(true);
-  }, []);
+  }, [adminAuthed]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -1828,18 +1835,31 @@ export default function YouEsports() {
     return payload;
   };
 
-  const updateRosterRow = async (player, game) => {
-    return runWithMissingColumnFallback(
-      buildRosterPayload(game, player, true),
-      (payload) => supabase.from('roster').update(payload).eq('id', player.id)
+  const updateRowWithFallback = async (table, id, payload) => {
+    const result = await runWithMissingColumnFallback(
+      payload,
+      (nextPayload) => supabase.from(table).update(nextPayload).eq('id', id).select('id')
     );
+
+    if (result.error) return result;
+
+    const updatedRows = Array.isArray(result.data) ? result.data.length : 0;
+    if (!updatedRows) {
+      return {
+        ...result,
+        error: { message: "No rows were updated. Please sign in with an admin account and try again." },
+      };
+    }
+
+    return result;
+  };
+
+  const updateRosterRow = async (player, game) => {
+    return updateRowWithFallback('roster', player.id, buildRosterPayload(game, player, true));
   };
 
   const updateCreatorRow = async (creator) => {
-    return runWithMissingColumnFallback(
-      buildCreatorPayload(creator, true),
-      (payload) => supabase.from('creators').update(payload).eq('id', creator.id)
-    );
+    return updateRowWithFallback('creators', creator.id, buildCreatorPayload(creator, true));
   };
 
   const addPlayer = async (game) => {
@@ -1948,7 +1968,7 @@ export default function YouEsports() {
 
   // If optional creator fields exist only in local cache, sync them to Supabase so mobile sees the same data.
   useEffect(() => {
-    if (!dataLoaded || !creators.length) return;
+    if (!adminAuthed || !dataLoaded || !creators.length) return;
 
     const optionalStore = getOptionalFieldStore();
     const pending = creators
@@ -1996,17 +2016,20 @@ export default function YouEsports() {
 
     let cancelled = false;
     const syncLocalCreatorFields = async () => {
+      let syncedAny = false;
       await Promise.all(
         pending.map(async ({ id, idKey, payload }) => {
           creatorAutoSyncRef.current.add(idKey);
-          await runWithMissingColumnFallback(
-            payload,
-            (nextPayload) => supabase.from('creators').update(nextPayload).eq('id', id)
-          );
+          const result = await updateRowWithFallback('creators', id, payload);
+          if (result.error) {
+            creatorAutoSyncRef.current.delete(idKey);
+            return;
+          }
+          syncedAny = true;
         })
       );
 
-      if (!cancelled) {
+      if (!cancelled && syncedAny) {
         await fetchData();
       }
     };
@@ -2016,7 +2039,7 @@ export default function YouEsports() {
     return () => {
       cancelled = true;
     };
-  }, [creators, dataLoaded, fetchData]);
+  }, [adminAuthed, creators, dataLoaded, fetchData]);
 
   /* Keep nav highlight in sync with section hash */
   useEffect(() => {
