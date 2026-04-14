@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import ReCAPTCHA from "react-google-recaptcha";
 import { supabase } from './supabaseClient';
 import merchPreview from './assets/merch-preview.jpg';
 
@@ -23,6 +24,8 @@ const CONTACT_INFO_ITEMS = [
   { type: "location", label: "LOCATION", value: "Mumbai, India" },
   { type: "hours", label: "HOURS", value: "Mon-Sat - 10 AM - 7 PM IST" },
 ];
+
+const RECAPTCHA_SITE_KEY = (import.meta.env.VITE_RECAPTCHA_SITE_KEY || "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI").trim();
 
 const getPageFromHash = () => {
   const page = window.location.hash.replace(/^#\/?/, "");
@@ -1080,6 +1083,12 @@ const style = `
     transition: transform 0.2s ease, box-shadow 0.2s ease;
   }
   .send-btn:hover { transform: translateY(-2px); box-shadow: 0 0 48px rgba(200,0,0,0.4); }
+  .recaptcha-wrap {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 78px;
+  }
   .form-note { font-size: 11px; color: rgba(255,255,255,0.18); text-align: center; }
   .resp-badge {
     display: flex; align-items: center; gap: 12px;
@@ -1202,6 +1211,7 @@ const style = `
     .roster-grid { grid-template-columns: 1fr; }
     footer { grid-template-columns: 1fr; }
     .form-row { grid-template-columns: 1fr; }
+    .recaptcha-wrap { justify-content: flex-start; overflow-x: auto; }
     .dept-grid { grid-template-columns: 1fr; }
   }
 `;
@@ -1459,9 +1469,17 @@ export default function YouEsports() {
   const [formPhone, setFormPhone] = useState("");
   const [formMessage, setFormMessage] = useState("");
   const [formStatus, setFormStatus] = useState(""); // "", "sending", "sent", "error"
+  const [captchaToken, setCaptchaToken] = useState("");
+  const recaptchaRef = useRef(null);
 
   const handleContactSubmit = async (e) => {
     e.preventDefault();
+    if (!captchaToken) {
+      setFormStatus("captcha");
+      setTimeout(() => setFormStatus(""), 4000);
+      return;
+    }
+
     setFormStatus("sending");
     try {
       const res = await fetch("https://formsubmit.co/ajax/youesportsmail@gmail.com", {
@@ -1476,11 +1494,15 @@ export default function YouEsports() {
           message: formMessage,
           _subject: `[YOU eSports] ${subject || depts[activeDept]?.title || "New Inquiry"}`,
           _template: "table",
+          _captcha: "true",
+          "g-recaptcha-response": captchaToken,
         }),
       });
       if (res.ok) {
         setFormStatus("sent");
         setFormName(""); setFormEmail(""); setFormPhone(""); setFormMessage(""); setSubject("");
+        setCaptchaToken("");
+        recaptchaRef.current?.reset();
         setTimeout(() => setFormStatus(""), 5000);
       } else {
         setFormStatus("error");
@@ -2456,6 +2478,18 @@ export default function YouEsports() {
               <input className="finput" type="tel" placeholder="+91 00000 00000" value={formPhone} onChange={e => setFormPhone(e.target.value)} />
               <input className="finput" type="text" placeholder="Brief subject line" value={subject} onChange={e => setSubject(e.target.value)} />
             </div>
+            <div className="recaptcha-wrap">
+              <ReCAPTCHA
+                ref={recaptchaRef}
+                sitekey={RECAPTCHA_SITE_KEY}
+                onChange={(token) => {
+                  setCaptchaToken(token || "");
+                  if (token && formStatus === "captcha") setFormStatus("");
+                }}
+                onExpired={() => setCaptchaToken("")}
+                onErrored={() => setCaptchaToken("")}
+              />
+            </div>
             <textarea className="finput" placeholder="Tell us about your inquiry in detail..." required value={formMessage} onChange={e => setFormMessage(e.target.value)} />
             <button className="send-btn" type="submit" disabled={formStatus === "sending"}>
               {formStatus === "sending" ? "SENDING..." : formStatus === "sent" ? "MESSAGE SENT!" : "SEND MESSAGE"}
@@ -2468,6 +2502,11 @@ export default function YouEsports() {
             {formStatus === "error" && (
               <p className="form-note" style={{ color: "#ff5555" }}>
                 Something went wrong. Please try again or email us directly at contact@youesports.org
+              </p>
+            )}
+            {formStatus === "captcha" && (
+              <p className="form-note" style={{ color: "#ffbf47" }}>
+                Please complete reCAPTCHA before sending your message.
               </p>
             )}
             {!formStatus && (
