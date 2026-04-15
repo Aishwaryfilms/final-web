@@ -25,6 +25,11 @@ const distDir = join(projectDir, "dist");
 const distIndexPath = join(distDir, "index.html");
 const dist404Path = join(distDir, "404.html");
 const distAssetsDir = join(distDir, "assets");
+const distFaviconFiles = [
+  "favicon.ico",
+  "favicon.svg",
+  "icons.svg",
+];
 
 const rootIndexPath = join(workspaceRoot, "index.html");
 const root404Path = join(workspaceRoot, "404.html");
@@ -78,11 +83,26 @@ try {
   copyFile(dist404Path, project404Path);
   copyDirectory(distAssetsDir, projectAssetsDir);
 
+  // Keep root-level favicon files in sync.
+  for (const fileName of distFaviconFiles) {
+    const sourcePath = join(distDir, fileName);
+    if (existsSync(sourcePath)) {
+      copyFile(sourcePath, join(projectDir, fileName));
+    }
+  }
+
   // Keep direct file launch working at workspace root.
   if (shouldSyncWorkspaceRoot) {
     copyFile(distIndexPath, rootIndexPath);
     copyFile(dist404Path, root404Path);
     copyDirectory(distAssetsDir, rootAssetsDir);
+
+    for (const fileName of distFaviconFiles) {
+      const sourcePath = join(distDir, fileName);
+      if (existsSync(sourcePath)) {
+        copyFile(sourcePath, join(workspaceRoot, fileName));
+      }
+    }
   }
 
   publishSucceeded = true;
