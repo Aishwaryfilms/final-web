@@ -2617,7 +2617,12 @@ export default function YouEsports() {
         </div>
 
         <div className="roster-grid">
-          {players.map(p => renderCard(p, activeGame, "roster"))}
+          {!dataLoaded
+            ? <div className="status-card">LOADING ROSTER...</div>
+            : players.length > 0
+              ? players.map(p => renderCard(p, activeGame, "roster"))
+              : <div className="status-card">ANNOUNCING SOON. STAY TUNED.</div>
+          }
         </div>
       </section>
 
@@ -2640,7 +2645,7 @@ export default function YouEsports() {
             ? <div className="status-card">LOADING CREATORS...</div>
             : creators.length > 0
               ? creators.map(c => renderCard(c, c.platform, "creator"))
-              : <div className="status-card">NO CREATORS FOUND YET.</div>
+              : <div className="status-card">ANNOUNCING SOON. STAY TUNED.</div>
           }
         </div>
       </section>
