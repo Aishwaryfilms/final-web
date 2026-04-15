@@ -351,7 +351,7 @@ const style = `
     --red-glow: rgba(200,0,0,0.35);
   }
 
-  html { scroll-behavior: smooth; }
+  html { scroll-behavior: auto; }
 
   .ye-root {
     background: #070707;
@@ -363,18 +363,16 @@ const style = `
 
   /* BG */
   .bg-fixed { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
-  .bg-orb { position: absolute; border-radius: 50%; will-change: transform; }
+  .bg-orb { position: absolute; border-radius: 50%; }
   .orb1 {
     width:700px; height:700px;
     background: radial-gradient(circle, rgba(200,0,0,0.18) 0%, transparent 70%);
     top:-200px; right:-150px;
-    animation: orbFloatA 20s ease-in-out infinite;
   }
   .orb2 {
     width:500px; height:500px;
     background: radial-gradient(circle, rgba(150,0,0,0.12) 0%, transparent 70%);
     bottom:100px; left:-150px;
-    animation: orbFloatB 26s ease-in-out infinite;
   }
   .bg-grid {
     position: fixed; inset: 0; pointer-events: none; z-index: 0;
@@ -382,20 +380,6 @@ const style = `
       linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
       linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
     background-size: 56px 56px;
-    will-change: transform;
-    animation: gridPan 36s linear infinite;
-  }
-  @keyframes orbFloatA {
-    0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
-    50% { transform: translate3d(-24px, 20px, 0) scale(1.05); }
-  }
-  @keyframes orbFloatB {
-    0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
-    50% { transform: translate3d(28px, -18px, 0) scale(1.04); }
-  }
-  @keyframes gridPan {
-    0% { transform: translate3d(0, 0, 0); }
-    100% { transform: translate3d(56px, 56px, 0); }
   }
 
   /* SECTION DIVIDER */
@@ -530,40 +514,21 @@ const style = `
     text-align: center;
     padding: 6rem 2rem 5rem;
   }
-  @keyframes heroRise {
-    0% { opacity: 0; transform: translate3d(0, 24px, 0) scale(0.985); }
-    100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
-  }
-  @keyframes heroFadeIn {
-    0% { opacity: 0; }
-    100% { opacity: 1; }
-  }
   .hero-logo-wrap {
     width: 140px;
     margin: 0 auto 2rem;
     display: flex; align-items: center; justify-content: center;
     background: none; border: none; outline: none;
     overflow: visible;
-    animation: heroRise 850ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
   .hero-logo-wrap svg {
     overflow: visible;
-    animation: logoGlow 2.8s ease-in-out infinite;
-  }
-  @keyframes logoGlow {
-    0%,100% { filter: drop-shadow(0 0 10px rgba(255,0,0,0.5)) drop-shadow(0 0 22px rgba(255,0,0,0.25)); }
-    50% { filter: drop-shadow(0 0 22px rgba(255,0,0,0.9)) drop-shadow(0 0 48px rgba(255,0,0,0.45)); }
-  }
-  @keyframes pulse {
-    0%,100% { box-shadow: 0 0 30px rgba(200,0,0,0.18); }
-    50% { box-shadow: 0 0 55px rgba(200,0,0,0.38); }
   }
   .hero-eyebrow {
     display: inline-flex; align-items: center; gap: 10px;
     font-family: 'Space Mono', monospace;
     font-size: 9px; letter-spacing: 4px; color: var(--red);
     margin-bottom: 1.6rem;
-    animation: heroRise 850ms cubic-bezier(0.22, 1, 0.36, 1) 120ms both;
   }
   .hero-eyebrow::before,.hero-eyebrow::after {
     content: ''; width: 28px; height: 1px;
@@ -574,7 +539,6 @@ const style = `
     font-size: clamp(66px, 12.5vw, 132px);
     line-height: 0.93; letter-spacing: 2px;
     margin-bottom: 1.6rem;
-    animation: heroRise 850ms cubic-bezier(0.22, 1, 0.36, 1) 220ms both;
   }
   .hero-title .red {
     color: var(--red);
@@ -586,7 +550,6 @@ const style = `
     color: rgba(255,255,255,0.42);
     max-width: 480px; line-height: 1.75;
     margin: 0 auto 2.8rem;
-    animation: heroRise 850ms cubic-bezier(0.22, 1, 0.36, 1) 340ms both;
   }
   .email-bar {
     display: flex; max-width: 480px; width: 100%;
@@ -622,7 +585,6 @@ const style = `
     display: flex; flex-direction: column; align-items: center; gap: 6px;
     font-family: 'Space Mono', monospace;
     font-size: 9px; letter-spacing: 2.5px; color: rgba(255,255,255,0.18);
-    animation: heroFadeIn 900ms ease 620ms both;
   }
   .scroll-line {
     width: 1px; height: 42px;
@@ -632,37 +594,35 @@ const style = `
   /* SECTION COMMON */
   section { position: relative; z-index: 1; padding: 5.5rem 3rem; }
   .reveal {
-    opacity: 0;
-    transform: translateY(30px);
-    transition: opacity 520ms cubic-bezier(0.22, 1, 0.36, 1), transform 520ms cubic-bezier(0.22, 1, 0.36, 1);
-    will-change: opacity, transform;
+    opacity: 1;
+    transform: none;
+    transition: none;
+    will-change: auto;
   }
   .reveal.visible {
     opacity: 1;
-    transform: translateY(0);
+    transform: none;
   }
   .wipe {
     display: inline-block;
-    clip-path: inset(0 100% 0 0);
-    transition: clip-path 620ms cubic-bezier(0.22, 1, 0.36, 1);
-    will-change: clip-path;
+    clip-path: inset(0 0 0 0);
+    transition: none;
+    will-change: auto;
   }
   .wipe.visible {
     clip-path: inset(0 0 0 0);
   }
   .card {
-    opacity: 0;
-    transform: scale(0.05) translateY(60px);
-    transition:
-      opacity 640ms cubic-bezier(0.34, 1.56, 0.64, 1),
-      transform 640ms cubic-bezier(0.34, 1.56, 0.64, 1);
-    transition-delay: var(--card-delay, 0ms);
+    opacity: 1;
+    transform: none;
+    transition: none;
+    transition-delay: 0ms;
     transform-origin: center bottom;
-    will-change: opacity, transform;
+    will-change: auto;
   }
   .card.visible {
     opacity: 1;
-    transform: scale(1) translateY(0);
+    transform: none;
   }
   .sec-label {
     display: inline-flex; align-items: center; gap: 8px;
@@ -784,8 +744,8 @@ const style = `
     border: 1px solid rgba(255,255,255,0.08);
   }
   .player-card:hover {
-    transform: translateY(-8px);
-    box-shadow: 0 28px 64px rgba(200,0,0,0.18);
+    transform: none;
+    box-shadow: none;
   }
 
   /* Image area - big cinematic zone */
@@ -799,9 +759,8 @@ const style = `
     object-fit: cover; object-position: top center;
     display: block;
     filter: sepia(0.06) contrast(1.05);
-    transition: transform 0.4s ease;
   }
-  .player-card:hover .pc-img-area img { transform: scale(1.04); }
+  .player-card:hover .pc-img-area img { transform: none; }
   .pc-img-placeholder {
     width: 100%; height: 100%;
     display: flex; align-items: center; justify-content: center;
@@ -1058,10 +1017,9 @@ const style = `
     object-fit: cover;
     display: block;
     filter: saturate(1.1) contrast(1.1);
-    transition: transform 0.5s ease;
   }
   .cs-img-box img:hover {
-    transform: scale(1.05);
+    transform: none;
   }
   .cs-content {
     padding: 5rem 3rem;
@@ -1168,9 +1126,9 @@ const style = `
     font-family: 'Space Mono', monospace;
     font-size: 11px; letter-spacing: 2px; cursor: pointer;
     box-shadow: 0 0 28px rgba(200,0,0,0.22);
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    transition: none;
   }
-  .send-btn:hover { transform: translateY(-2px); box-shadow: 0 0 48px rgba(200,0,0,0.4); }
+  .send-btn:hover { transform: none; box-shadow: 0 0 28px rgba(200,0,0,0.22); }
   .altcha-wrap {
     align-self: flex-start;
     width: fit-content;
@@ -2056,163 +2014,6 @@ export default function YouEsports() {
       window.removeEventListener("hashchange", syncFromHash);
     };
   }, []);
-
-  // Make wheel scrolling feel faster and smoother on desktop devices.
-  useEffect(() => {
-    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const hasFinePointer = window.matchMedia("(pointer: fine)");
-    const isMobileViewport = window.matchMedia("(max-width: 900px)");
-    if (prefersReducedMotion.matches || !hasFinePointer.matches || isMobileViewport.matches) return;
-
-    let rafId = 0;
-    let currentY = window.scrollY;
-    let targetY = window.scrollY;
-
-    const clampY = (value) => {
-      const maxY = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-      return Math.max(0, Math.min(maxY, value));
-    };
-
-    const shouldBypassSmoothScroll = (eventTarget) => {
-      let node = eventTarget instanceof Element ? eventTarget : null;
-      while (node && node !== document.body) {
-        const style = window.getComputedStyle(node);
-        const canScrollY =
-          (style.overflowY === "auto" || style.overflowY === "scroll") &&
-          node.scrollHeight > node.clientHeight + 2;
-        if (canScrollY) return true;
-        node = node.parentElement;
-      }
-      return false;
-    };
-
-    const tick = () => {
-      const delta = targetY - currentY;
-      if (Math.abs(delta) < 0.4) {
-        currentY = targetY;
-        window.scrollTo(0, currentY);
-        rafId = 0;
-        return;
-      }
-      const ease = Math.min(0.28, 0.17 + Math.abs(delta) / 1200);
-      currentY += delta * ease;
-      window.scrollTo(0, currentY);
-      rafId = window.requestAnimationFrame(tick);
-    };
-
-    const ensureTicking = () => {
-      if (!rafId) rafId = window.requestAnimationFrame(tick);
-    };
-
-    const onWheel = (event) => {
-      if (isMobileViewport.matches || event.ctrlKey || shouldBypassSmoothScroll(event.target)) return;
-
-      const verticalScroll = Math.abs(event.deltaY) >= Math.abs(event.deltaX);
-      if (!verticalScroll) return;
-
-      event.preventDefault();
-
-      const direction = Math.sign(event.deltaY) || 1;
-      const amplifiedDelta = event.deltaY * 1.45;
-      const clampedMagnitude = Math.min(Math.max(Math.abs(amplifiedDelta), 34), 240);
-      const adjustedDelta = direction * clampedMagnitude;
-      targetY = clampY(targetY + adjustedDelta);
-      ensureTicking();
-    };
-
-    const syncPosition = () => {
-      if (rafId) return;
-      currentY = window.scrollY;
-      targetY = window.scrollY;
-    };
-
-    const onResize = () => {
-      if (isMobileViewport.matches) {
-        if (rafId) {
-          window.cancelAnimationFrame(rafId);
-          rafId = 0;
-        }
-        currentY = window.scrollY;
-        targetY = window.scrollY;
-        return;
-      }
-      currentY = clampY(currentY);
-      targetY = clampY(targetY);
-    };
-
-    window.addEventListener("wheel", onWheel, { passive: false });
-    window.addEventListener("scroll", syncPosition, { passive: true });
-    window.addEventListener("resize", onResize);
-
-    return () => {
-      window.removeEventListener("wheel", onWheel);
-      window.removeEventListener("scroll", syncPosition);
-      window.removeEventListener("resize", onResize);
-      if (rafId) window.cancelAnimationFrame(rafId);
-    };
-  }, []);
-
-  // Add .visible as elements enter the viewport (no animation library required).
-  useEffect(() => {
-    const targets = Array.from(
-      document.querySelectorAll(".card:not(.visible), .reveal:not(.visible), .wipe:not(.visible)")
-    );
-    if (!targets.length) return;
-
-    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const isMobileViewport = window.matchMedia("(max-width: 900px)").matches;
-    if (prefersReducedMotion || isMobileViewport) {
-      targets.forEach((target) => target.classList.add("visible"));
-      return;
-    }
-
-    const pendingTargets = [];
-    targets.forEach((target) => {
-      const rect = target.getBoundingClientRect();
-      const isInView = rect.top < window.innerHeight * 0.96 && rect.bottom > window.innerHeight * 0.04;
-      if (isInView) {
-        target.classList.add("visible");
-        if (target.classList.contains("reveal")) {
-          target.querySelectorAll(".wipe, .card").forEach((node) => node.classList.add("visible"));
-        }
-      } else {
-        pendingTargets.push(target);
-      }
-    });
-
-    const cardGroups = new Map();
-    targets.forEach((target) => {
-      if (!target.classList.contains("card")) return;
-      const parent = target.parentElement || document.body;
-      if (!cardGroups.has(parent)) cardGroups.set(parent, []);
-      cardGroups.get(parent).push(target);
-    });
-
-    cardGroups.forEach((cards) => {
-      cards.forEach((card, index) => {
-        card.style.setProperty("--card-delay", `${index * 120}ms`);
-      });
-    });
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (!entry.isIntersecting) return;
-          entry.target.classList.add("visible");
-          if (entry.target.classList.contains("reveal")) {
-            entry.target.querySelectorAll(".wipe, .card").forEach((node) => node.classList.add("visible"));
-          }
-          observer.unobserve(entry.target);
-        });
-      },
-      { threshold: 0.04, rootMargin: "0px 0px -2% 0px" }
-    );
-
-    if (!pendingTargets.length) return;
-    pendingTargets.forEach((target) => observer.observe(target));
-
-    return () => observer.disconnect();
-  }, [roster.BGMI.length, roster.Valorant.length, creators.length]);
 
   const handleDeptClick = (i) => { setActiveDept(i); setSubject(depts[i].title); };
   const players = roster[activeGame] || [];
