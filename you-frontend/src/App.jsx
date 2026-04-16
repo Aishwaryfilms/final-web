@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import "altcha";
 import { supabase } from './supabaseClient';
 import merchPreview from './assets/merch-preview.jpg';
+import ShopSection from "./components/ShopSection";
 
 const RED = "#e02020";
 
@@ -12,11 +13,11 @@ const SOCIAL_LINKS = [
   { label: "YT", href: "https://www.youtube.com/@YOUeSportsCC", name: "YouTube" },
 ];
 
-const SECTION_IDS = ["home", "about", "roster", "creators", "shop", "contact"];
+const NAV_SECTION_IDS = ["home", "about", "roster", "creators", "shop", "contact"];
 
 const NAV_LABELS = {
   creators: "CREATORS",
-  shop: "ARMORY",
+  shop: "SHOP",
 };
 
 const CONTACT_INFO_ITEMS = [
@@ -30,7 +31,7 @@ const ALTCHA_CONFIGURATION = '{"test":true}';
 
 const getPageFromHash = () => {
   const page = window.location.hash.replace(/^#\/?/, "");
-  return SECTION_IDS.includes(page) ? page : "home";
+  return NAV_SECTION_IDS.includes(page) ? page : "home";
 };
 
 const getPageHref = (page) => `#${page}`;
@@ -349,6 +350,12 @@ const style = `
     --red: #e02020;
     --red-dark: #a00000;
     --red-glow: rgba(200,0,0,0.35);
+    --nav-shell-h: clamp(56px, 7vw, 66px);
+    --nav-logo-size: clamp(36px, 3.4vw, 44px);
+    --nav-link-fs: clamp(10px, 0.92vw, 11px);
+    --nav-link-pad-x: clamp(11px, 1.2vw, 15px);
+    --nav-link-pad-y: clamp(8px, 0.9vw, 10px);
+    --nav-shell-side-gap: clamp(12px, 2.4vw, 28px);
   }
 
   html { scroll-behavior: auto; }
@@ -368,11 +375,13 @@ const style = `
     width:700px; height:700px;
     background: radial-gradient(circle, rgba(200,0,0,0.18) 0%, transparent 70%);
     top:-200px; right:-150px;
+    animation: orbFloatOne 16s ease-in-out infinite;
   }
   .orb2 {
     width:500px; height:500px;
     background: radial-gradient(circle, rgba(150,0,0,0.12) 0%, transparent 70%);
     bottom:100px; left:-150px;
+    animation: orbFloatTwo 18s ease-in-out infinite;
   }
   .bg-grid {
     position: fixed; inset: 0; pointer-events: none; z-index: 0;
@@ -380,6 +389,31 @@ const style = `
       linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
       linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
     background-size: 56px 56px;
+    animation: gridDrift 30s linear infinite;
+  }
+
+  @keyframes orbFloatOne {
+    0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.88; }
+    50% { transform: translate3d(-24px, 20px, 0) scale(1.05); opacity: 1; }
+  }
+  @keyframes orbFloatTwo {
+    0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.82; }
+    50% { transform: translate3d(22px, -18px, 0) scale(1.06); opacity: 1; }
+  }
+  @keyframes gridDrift {
+    0% { transform: translate3d(0, 0, 0); }
+    50% { transform: translate3d(8px, 8px, 0); }
+    100% { transform: translate3d(0, 0, 0); }
+  }
+  @keyframes logoGlow {
+    0%, 100% {
+      filter: drop-shadow(0 0 8px rgba(224,32,32,0.25)) drop-shadow(0 0 18px rgba(224,32,32,0.14));
+      transform: translateY(0) scale(1);
+    }
+    50% {
+      filter: drop-shadow(0 0 14px rgba(224,32,32,0.5)) drop-shadow(0 0 28px rgba(224,32,32,0.22));
+      transform: translateY(-2px) scale(1.02);
+    }
   }
 
   /* SECTION DIVIDER */
@@ -407,33 +441,88 @@ const style = `
 
   /* NAVBAR */
   .nav {
-    position: sticky; top: 0; z-index: 200;
+    position: sticky;
+    top: clamp(6px, 0.9vw, 10px);
+    z-index: 200;
     display: flex; align-items: center; justify-content: space-between;
-    padding: 0 3rem; height: 62px;
-    background: rgba(7,7,7,0.88);
-    backdrop-filter: blur(24px);
-    border-bottom: 1px solid rgba(255,255,255,0.05);
+    width: min(1140px, calc(100% - (var(--nav-shell-side-gap) * 2)));
+    margin: 8px auto 0;
+    padding: 0 clamp(10px, 1.4vw, 16px);
+    min-height: var(--nav-shell-h);
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.16);
+    background:
+      linear-gradient(165deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04) 45%, rgba(255,255,255,0.02) 100%),
+      linear-gradient(130deg, rgba(200,0,0,0.15), rgba(0,0,0,0.32));
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.22),
+      0 14px 34px rgba(0,0,0,0.46),
+      0 0 0 1px rgba(200,0,0,0.12);
+    overflow: hidden;
+    backdrop-filter: blur(20px) saturate(130%);
+    -webkit-backdrop-filter: blur(20px) saturate(130%);
   }
   .nav-logo {
     font-family: 'Bebas Neue', sans-serif;
     font-size: 26px; letter-spacing: 2px;
     color: #fff; text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--nav-logo-size);
+    height: var(--nav-logo-size);
+    flex: 0 0 var(--nav-logo-size);
+    border: none;
+    background: transparent;
+    box-shadow: none;
+  }
+  .nav-logo svg {
+    transition: filter 0.25s ease, transform 0.25s ease;
+  }
+  .nav-logo:hover svg {
+    transform: translateY(-1px);
+    filter: drop-shadow(0 0 10px rgba(224,32,32,0.4));
   }
   .nav-logo span { color: var(--red); }
-  .nav-links { display: flex; gap: 2rem; list-style: none; }
+  .nav-links {
+    display: flex;
+    gap: clamp(4px, 0.7vw, 7px);
+    list-style: none;
+    padding: clamp(4px, 0.6vw, 6px);
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.04);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.1);
+    max-width: 100%;
+  }
   .nav-links a {
     font-family: 'Space Mono', monospace;
-    font-size: 10px; letter-spacing: 2px;
-    color: rgba(255,255,255,0.4); text-decoration: none;
-    transition: color 0.2s; padding-bottom: 3px;
+    font-size: var(--nav-link-fs);
+    letter-spacing: clamp(1.2px, 0.16vw, 1.8px);
+    color: rgba(255,255,255,0.55); text-decoration: none;
+    transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+    padding: var(--nav-link-pad-y) var(--nav-link-pad-x);
+    border-radius: 999px;
+    border: 1px solid transparent;
+    line-height: 1;
+    white-space: nowrap;
   }
-  .nav-links a:hover, .nav-links a.active { color: #fff; }
-  .nav-links a.active { border-bottom: 1.5px solid var(--red); }
-  .nav-right { display: flex; gap: 8px; align-items: center; }
+  .nav-links a:hover {
+    color: #fff;
+    border-color: rgba(200,0,0,0.35);
+    background: rgba(200,0,0,0.12);
+  }
+  .nav-links a.active {
+    color: #fff;
+    border-color: rgba(200,0,0,0.52);
+    background: linear-gradient(145deg, rgba(200,0,0,0.42), rgba(120,0,0,0.3));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.12);
+  }
+  .nav-right { display: flex; gap: 8px; align-items: center; flex: 0 0 auto; }
 
   .back-home-btn {
     position: fixed;
-    top: 76px;
+    top: calc(var(--nav-shell-h) + 28px);
     left: 16px;
     z-index: 55;
     display: inline-flex;
@@ -465,12 +554,14 @@ const style = `
     display: none;
     align-items: center;
     justify-content: center;
-    width: 44px;
-    height: 44px;
-    background: transparent;
-    border: 1px solid rgba(255,255,255,0.04);
-    border-radius: 8px;
+    width: clamp(38px, 6vw, 44px);
+    height: clamp(38px, 6vw, 44px);
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 999px;
     cursor: pointer;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.1);
+    flex: 0 0 auto;
   }
   .hamburger .bar {
     display:block;
@@ -487,23 +578,43 @@ const style = `
   .mobile-menu {
     display: none;
     position: fixed;
-    inset: 62px 0 0 0;
+    inset: calc(var(--nav-shell-h) + 24px) 12px auto 12px;
     z-index: 300;
-    background: rgba(7,7,7,0.96);
-    backdrop-filter: blur(10px);
-    padding: 2rem 1.5rem;
+    border-radius: 24px;
+    border: 1px solid rgba(255,255,255,0.15);
+    background: linear-gradient(165deg, rgba(14,14,14,0.94), rgba(14,14,14,0.78));
+    backdrop-filter: blur(16px) saturate(130%);
+    -webkit-backdrop-filter: blur(16px) saturate(130%);
+    box-shadow: 0 18px 34px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.08);
+    padding: 1rem;
     transition: opacity 0.22s ease, transform 0.22s ease;
     opacity: 0;
     pointer-events: none;
+    transform: translateY(-8px);
   }
   .mobile-menu.open {
     display: block;
     opacity: 1;
     pointer-events: auto;
+    transform: translateY(0);
   }
   .mobile-menu ul { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:12px; }
-  .mobile-menu a { font-family: 'Space Mono', monospace; font-size: 16px; color: #fff; text-decoration:none; padding: 12px 8px; border-radius: 8px; display:block; }
-  .mobile-menu a.active { color: var(--red); background: rgba(200,0,0,0.06); }
+  .mobile-menu a {
+    font-family: 'Space Mono', monospace;
+    font-size: 14px;
+    color: #fff;
+    text-decoration:none;
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.03);
+    display:block;
+  }
+  .mobile-menu a.active {
+    color: #fff;
+    border-color: rgba(200,0,0,0.42);
+    background: rgba(200,0,0,0.16);
+  }
 
   /* HERO */
   .hero {
@@ -520,9 +631,15 @@ const style = `
     display: flex; align-items: center; justify-content: center;
     background: none; border: none; outline: none;
     overflow: visible;
+    animation: logoGlow 3.8s ease-in-out infinite;
+    transition: transform 0.25s ease, filter 0.25s ease;
+    will-change: transform, filter;
   }
   .hero-logo-wrap svg {
     overflow: visible;
+  }
+  .hero-logo-wrap:hover {
+    transform: translateY(-4px) scale(1.03);
   }
   .hero-eyebrow {
     display: inline-flex; align-items: center; gap: 10px;
@@ -615,7 +732,7 @@ const style = `
   .card {
     opacity: 1;
     transform: none;
-    transition: none;
+    transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
     transition-delay: 0ms;
     transform-origin: center bottom;
     will-change: auto;
@@ -744,8 +861,8 @@ const style = `
     border: 1px solid rgba(255,255,255,0.08);
   }
   .player-card:hover {
-    transform: none;
-    box-shadow: none;
+    transform: translateY(-8px);
+    box-shadow: 0 20px 42px rgba(0,0,0,0.45), 0 0 0 1px rgba(224,32,32,0.2);
   }
 
   /* Image area - big cinematic zone */
@@ -759,8 +876,12 @@ const style = `
     object-fit: cover; object-position: top center;
     display: block;
     filter: sepia(0.06) contrast(1.05);
+    transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1), filter 0.35s ease;
   }
-  .player-card:hover .pc-img-area img { transform: none; }
+  .player-card:hover .pc-img-area img {
+    transform: scale(1.06);
+    filter: sepia(0.04) contrast(1.12) saturate(1.07);
+  }
   .pc-img-placeholder {
     width: 100%; height: 100%;
     display: flex; align-items: center; justify-content: center;
@@ -869,10 +990,13 @@ const style = `
     font-size: 10px; letter-spacing: 1px;
     color: rgba(255,255,255,0.28);
     text-decoration: none;
-    transition: color 0.2s;
+    transition: color 0.2s ease, transform 0.2s ease;
     margin-top: auto;
   }
-  .pc-view:hover { color: var(--red); }
+  .pc-view:hover {
+    color: var(--red);
+    transform: translateX(2px);
+  }
 
   .profile-overlay {
     position: fixed;
@@ -1017,30 +1141,58 @@ const style = `
     object-fit: cover;
     display: block;
     filter: saturate(1.1) contrast(1.1);
+    transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1), filter 0.3s ease;
   }
   .cs-img-box img:hover {
-    transform: none;
+    transform: scale(1.05);
+    filter: saturate(1.16) contrast(1.14);
   }
   .cs-content {
     padding: 5rem 3rem;
     text-align: center;
-    display: flex; flex-direction: column; align-items: center; gap: 1.2rem;
+    display: flex; flex-direction: column; align-items: center; gap: 1rem;
     justify-content: center;
   }
   .cs-icon {
-    width: 72px; height: 72px; border-radius: 50%;
+    width: 76px; height: 76px; border-radius: 50%;
     background: rgba(200,0,0,0.08);
     border: 1px solid rgba(200,0,0,0.2);
     display: flex; align-items: center; justify-content: center;
-    font-size: 28px;
+    font-size: 21px;
+    font-family: 'Space Mono', monospace;
+    letter-spacing: 2px;
+    color: #ffd8d8;
     box-shadow: 0 0 30px rgba(200,0,0,0.12);
   }
   .cs-title {
     font-family: 'Bebas Neue', sans-serif;
-    font-size: clamp(32px,5vw,58px); letter-spacing: 3px;
+    font-size: clamp(32px,5vw,54px); letter-spacing: 3px;
     color: var(--red); text-shadow: 0 0 50px rgba(200,0,0,0.35);
   }
-  .cs-sub { font-size: 13px; color: rgba(255,255,255,0.32); max-width: 420px; line-height: 1.75; font-weight: 300; }
+  .cs-sub { font-size: 13px; color: rgba(255,255,255,0.44); max-width: 430px; line-height: 1.75; font-weight: 300; }
+  .cs-enter-btn {
+    margin-top: 0.5rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 40px;
+    padding: 0 24px;
+    border-radius: 999px;
+    border: 1px solid rgba(200,0,0,0.5);
+    background: linear-gradient(135deg, rgba(200,0,0,0.52), rgba(110,0,0,0.62));
+    color: #fff;
+    text-decoration: none;
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    box-shadow: 0 14px 30px rgba(200,0,0,0.22);
+  }
+  .cs-enter-btn:hover {
+    transform: translateY(-2px);
+    border-color: rgba(200,0,0,0.82);
+    box-shadow: 0 18px 34px rgba(200,0,0,0.28);
+  }
   .cs-badge {
     font-family: 'Space Mono', monospace;
     font-size: 9px; letter-spacing: 3px;
@@ -1126,9 +1278,12 @@ const style = `
     font-family: 'Space Mono', monospace;
     font-size: 11px; letter-spacing: 2px; cursor: pointer;
     box-shadow: 0 0 28px rgba(200,0,0,0.22);
-    transition: none;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
   }
-  .send-btn:hover { transform: none; box-shadow: 0 0 28px rgba(200,0,0,0.22); }
+  .send-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 0 30px rgba(200,0,0,0.34);
+  }
   .altcha-wrap {
     align-self: flex-start;
     width: fit-content;
@@ -1244,6 +1399,27 @@ const style = `
       transition: none !important;
       clip-path: inset(0 0 0 0) !important;
     }
+    .player-card,
+    .player-card:hover,
+    .pc-img-area img,
+    .cs-img-box img,
+    .send-btn,
+    .pc-view,
+    .nav-logo svg {
+      transition: none !important;
+      animation: none !important;
+      transform: none !important;
+      filter: none !important;
+    }
+  }
+
+  @media (max-width: 1120px) {
+    .nav-links { display: none; }
+    .hamburger { display: inline-flex; }
+    .nav {
+      justify-content: space-between;
+      width: calc(100% - 16px);
+    }
   }
 
   @media (max-width: 900px) {
@@ -1254,10 +1430,20 @@ const style = `
       transition: none !important;
       clip-path: inset(0 0 0 0) !important;
     }
-    .nav { padding: 0 1.5rem; }
+    .nav {
+      width: calc(100% - 16px);
+      margin-top: 6px;
+      padding: 0 10px;
+      min-height: 58px;
+    }
     .nav-links { display: none; }
+    .nav-logo {
+      width: 36px;
+      height: 36px;
+      flex-basis: 36px;
+    }
     .hamburger { display: inline-flex; }
-    .back-home-btn { top: 72px; left: 12px; }
+    .back-home-btn { top: 80px; left: 12px; }
     section { padding: 4rem 1.5rem; }
     .about-inner, .contact-inner { grid-template-columns: 1fr; gap: 2rem; padding: 2rem; }
     .profile-panel { grid-template-columns: 1fr; }
@@ -2019,6 +2205,7 @@ export default function YouEsports() {
   const players = roster[activeGame] || [];
   const socialLinks = SOCIAL_LINKS.filter(s => s.href);
   const profileReturnHref = activeProfile?.type === "creator" ? getPageHref("creators") : getPageHref("roster");
+  const isShopPage = activeNav === "shop" && !activeProfile;
 
   const profileRecord = useMemo(() => {
     if (!activeProfile) return null;
@@ -2100,11 +2287,10 @@ export default function YouEsports() {
         <a
           href={getPageHref("home")}
           className="nav-logo"
-          style={{ display: "flex", alignItems: "center", width: "36px", height: "36px" }}
           onClick={() => { setActiveNav("home"); setMenuOpen(false); }}
         ><LogoSVG /></a>
         <ul className="nav-links">
-          {SECTION_IDS.map(s => (
+          {NAV_SECTION_IDS.map(s => (
             <li key={s}>
               <a href={getPageHref(s)} className={activeNav === s ? "active" : ""} onClick={() => { setActiveNav(s); setMenuOpen(false); }}>
                 {getNavLabel(s)}
@@ -2128,7 +2314,7 @@ export default function YouEsports() {
 
       <div className={`mobile-menu ${menuOpen ? "open" : ""}`} onClick={e => { if (e.target === e.currentTarget) setMenuOpen(false); }}>
         <ul>
-          {SECTION_IDS.map(s => (
+          {NAV_SECTION_IDS.map(s => (
             <li key={s}>
               <a href={getPageHref(s)} className={activeNav === s ? "active" : ""} onClick={() => { setActiveNav(s); setMenuOpen(false); }}>
                 {getNavLabel(s)}
@@ -2351,6 +2537,10 @@ export default function YouEsports() {
         </div>
       )}
 
+      {isShopPage ? (
+        <ShopSection />
+      ) : (
+        <>
       {/* HERO */}
       <section id="home" className="hero">
         <div className="hero-logo-wrap">
@@ -2452,21 +2642,21 @@ export default function YouEsports() {
       </section>
 
       <SectionDivider label="THE ARMORY - MERCH" />
-      {/* SHOP */}
-      <section id="shop" className="reveal">
+      <section className="reveal">
         <div className="sec-label wipe">THE ARMORY</div>
-        <h2 className="sec-h2">MERCH <span className="red">DROPS</span></h2>
+        <h2 className="sec-h2">MERCH <span className="red">STORE</span></h2>
         <div className="coming-soon-wrap card">
           <div className="cs-img-box">
-            <img src={merchPreview} alt="You eSports Jersey First Look" />
+            <img src={merchPreview} alt="YOU eSports merchandise teaser" loading="lazy" decoding="async" />
           </div>
           <div className="cs-content">
-            <div className="cs-icon">NEW</div>
-            <div className="cs-title">COMING SOON</div>
+            <div className="cs-icon">SOON</div>
+            <div className="cs-title">ARMORY COMING SOON</div>
             <p className="cs-sub">
-              The armory is being forged. Exclusive You eSports jerseys, streetwear drops, and limited-edition gear are on their way. Stay locked in.
+              The merch page is ready for your products. Add your own images and descriptions when you are ready.
             </p>
-            <div className="cs-badge">DROP DATE - TO BE ANNOUNCED</div>
+            <a href={getPageHref("shop")} className="cs-enter-btn">ENTER SHOP</a>
+            <div className="cs-badge">CURRENT STATUS - PRODUCTS COMING SOON</div>
           </div>
         </div>
       </section>
@@ -2576,6 +2766,8 @@ export default function YouEsports() {
           </form>
         </div>
       </section>
+        </>
+      )}
 
       {/* FOOTER */}
       <footer className="reveal">
@@ -2584,7 +2776,7 @@ export default function YouEsports() {
           <a href={getPageHref("home")}>Home</a>
           <a href={getPageHref("roster")}>Rosters</a>
           <a href={getPageHref("creators")}>Content Creators</a>
-          <a href={getPageHref("shop")}>The Armory (Merch)</a>
+          <a href={getPageHref("shop")}>Shop</a>
           <a href={getPageHref("contact")}>Contact</a>
         </div>
         <div>
