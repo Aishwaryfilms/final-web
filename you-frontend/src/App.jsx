@@ -2997,6 +2997,21 @@ export default function YouEsports() {
   const profileReturnHref = activeProfile?.type === "creator" ? getPageHref("creators") : getPageHref("roster");
   const isShopPage = activeNav === "shop" && !activeProfile;
   const armoryTeaserItem = merchItems[0] || normalizeMerchItem(DEFAULT_SHOP_ITEMS[0], 0);
+  const armoryTeaserTitle = trimText(armoryTeaserItem?.title);
+  const armoryTeaserDescription = trimText(armoryTeaserItem?.description);
+  const armoryTeaserStatus = trimText(armoryTeaserItem?.status);
+  const armoryTeaserLooksPlaceholder = !armoryTeaserTitle
+    || /st+i+cker\s*pa?c?k?s?/i.test(armoryTeaserTitle)
+    || /^merch item \d+$/i.test(armoryTeaserTitle);
+  const armoryLandingTitle = armoryTeaserLooksPlaceholder
+    ? "ARMORY COMING SOON"
+    : armoryTeaserTitle;
+  const armoryLandingDescription = armoryTeaserLooksPlaceholder
+    ? "The armory is being forged. Exclusive You eSports jerseys, streetwear drops, and limited-edition gear are on their way. Stay locked in."
+    : (armoryTeaserDescription || "The merch page is ready for your products. Add your own images and descriptions when you are ready.");
+  const armoryLandingStatus = armoryTeaserLooksPlaceholder
+    ? "DROP DATE - TO BE ANNOUNCED"
+    : `CURRENT STATUS - ${armoryTeaserStatus || "PRODUCTS COMING SOON"}`;
   const armoryTeaserPrimaryImage = getMerchPrimaryImage(armoryTeaserItem);
   const landingMerchOverrideImg = landingMerchImage.img || resolveLandingMerchImagePath(landingMerchImage.imageFileName);
   const landingMerchTeaserSrc = landingMerchOverrideImg || LANDING_MERCH_COLLAGE_PATH;
@@ -3616,7 +3631,7 @@ export default function YouEsports() {
           <div className="cs-img-box">
             <img
               src={landingMerchTeaserSrc}
-              alt={`${armoryTeaserItem?.title || "YOU eSports"} merchandise teaser`}
+              alt={`${armoryLandingTitle} merchandise teaser`}
               data-merch-file-name={armoryTeaserPrimaryImage.imageFileName || ""}
               data-merch-candidate-index="0"
               loading="lazy"
@@ -3626,12 +3641,12 @@ export default function YouEsports() {
           </div>
           <div className="cs-content">
             <div className="cs-icon">SOON</div>
-            <div className="cs-title">{armoryTeaserItem?.title || "ARMORY COMING SOON"}</div>
+            <div className="cs-title">{armoryLandingTitle}</div>
             <p className="cs-sub">
-              {armoryTeaserItem?.description || "The merch page is ready for your products. Add your own images and descriptions when you are ready."}
+              {armoryLandingDescription}
             </p>
             <a href={getPageHref("shop")} className="cs-enter-btn">ENTER SHOP</a>
-            <div className="cs-badge">CURRENT STATUS - {armoryTeaserItem?.status || "PRODUCTS COMING SOON"}</div>
+            <div className="cs-badge">{armoryLandingStatus}</div>
           </div>
         </div>
       </section>
