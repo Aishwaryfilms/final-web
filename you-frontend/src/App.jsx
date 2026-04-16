@@ -875,6 +875,7 @@ const style = `
   .nav-logo span { color: var(--red); }
   .nav-links {
     display: flex;
+    align-items: center;
     gap: clamp(4px, 0.7vw, 7px);
     list-style: none;
     padding: clamp(4px, 0.6vw, 6px);
@@ -883,8 +884,15 @@ const style = `
     background: rgba(255,255,255,0.04);
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.1);
     max-width: 100%;
+    overflow: hidden;
+  }
+  .nav-links li {
+    display: flex;
   }
   .nav-links a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     font-family: 'Space Mono', monospace;
     font-size: var(--nav-link-fs);
     letter-spacing: clamp(1.2px, 0.16vw, 1.8px);
@@ -895,6 +903,7 @@ const style = `
     border: 1px solid transparent;
     line-height: 1;
     white-space: nowrap;
+    box-sizing: border-box;
   }
   .nav-links a:hover {
     color: #fff;
