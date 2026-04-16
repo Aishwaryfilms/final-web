@@ -256,7 +256,9 @@ const isMissingTableError = (error, tableName) => {
 };
 
 const MERCH_STORAGE_KEY = "youesports.merch.v1";
+const LANDING_MERCH_IMAGE_STORAGE_KEY = "youesports.landingMerchImage.v1";
 const DEFAULT_MERCH_STATUS = "OUT OF STOCK";
+const DEFAULT_LANDING_MERCH_IMAGE = Object.freeze({ img: null, imageFileName: "" });
 
 const createLocalMerchImageId = () => `local-merch-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -466,6 +468,61 @@ const getMerchFallbackItems = (allowLocalFallback) => (
     ? getLocalMerchItems()
     : normalizeMerchItems(DEFAULT_SHOP_ITEMS, true)
 );
+
+const normalizeLandingMerchImage = (value) => {
+  if (typeof value === "string") {
+    return {
+      ...DEFAULT_LANDING_MERCH_IMAGE,
+      imageFileName: trimText(value),
+    };
+  }
+
+  if (!value || typeof value !== "object") {
+    return { ...DEFAULT_LANDING_MERCH_IMAGE };
+  }
+
+  return {
+    img: trimText(value.img || value.src || value.url || value.dataUrl) || null,
+    imageFileName: trimText(
+      value.imageFileName
+      || value.image_file_name
+      || value.fileName
+      || value.file_name
+    ),
+  };
+};
+
+const getLocalLandingMerchImage = () => {
+  if (typeof window === "undefined") return { ...DEFAULT_LANDING_MERCH_IMAGE };
+  try {
+    const raw = window.localStorage.getItem(LANDING_MERCH_IMAGE_STORAGE_KEY);
+    if (!raw) return { ...DEFAULT_LANDING_MERCH_IMAGE };
+    return normalizeLandingMerchImage(JSON.parse(raw));
+  } catch {
+    return { ...DEFAULT_LANDING_MERCH_IMAGE };
+  }
+};
+
+const setLocalLandingMerchImage = (value) => {
+  if (typeof window === "undefined") return;
+  try {
+    const normalized = normalizeLandingMerchImage(value);
+    window.localStorage.setItem(LANDING_MERCH_IMAGE_STORAGE_KEY, JSON.stringify(normalized));
+    return { ok: true, error: "" };
+  } catch {
+    return {
+      ok: false,
+      error: "Could not save landing merch image locally. Try a smaller image.",
+    };
+  }
+};
+
+const resolveLandingMerchImagePath = (value) => {
+  const trimmed = trimText(value);
+  if (!trimmed) return "";
+  if (/^(https?:\/\/|data:|blob:|\/|\.\/|\.\.\/)/i.test(trimmed)) return trimmed;
+  return getMerchImagePath(trimmed);
+};
 
 const readFileAsDataUrl = (file) => new Promise((resolve, reject) => {
   const reader = new FileReader();
@@ -2233,11 +2290,13 @@ export default function YouEsports() {
   const [adminSaved, setAdminSaved] = useState(false);
   const [adminOpErr, setAdminOpErr] = useState("");
   const [merchStorageErr, setMerchStorageErr] = useState("");
+  const [landingMerchStorageErr, setLandingMerchStorageErr] = useState("");
 
   // Editable data
   const [roster, setRoster] = useState({ BGMI: [], Valorant: [] });
   const [creators, setCreators] = useState([]);
   const [merchItems, setMerchItems] = useState(() => getMerchFallbackItems(false));
+  const [landingMerchImage, setLandingMerchImage] = useState(() => getLocalLandingMerchImage());
   const [merchLoading, setMerchLoading] = useState(true);
   const [merchPersistenceMode, setMerchPersistenceMode] = useState("local");
   const [creatorsLoading, setCreatorsLoading] = useState(true);
@@ -2254,6 +2313,17 @@ export default function YouEsports() {
     }
     setMerchStorageErr("");
   }, [adminAuthed, merchItems, merchPersistenceMode]);
+
+  useEffect(() => {
+    if (merchPersistenceMode === "local" && !adminAuthed) return;
+
+    const result = setLocalLandingMerchImage(landingMerchImage);
+    if (result?.ok === false) {
+      setLandingMerchStorageErr(result.error || "Could not save landing merch image locally.");
+      return;
+    }
+    setLandingMerchStorageErr("");
+  }, [adminAuthed, landingMerchImage, merchPersistenceMode]);
 
   /*  Fetch data from Supabase  */
   const fetchData = useCallback(async () => {
@@ -2571,6 +2641,16 @@ export default function YouEsports() {
       if (String(item.id) !== String(id)) return item;
       return withSyncedMerchPrimaryImage({ ...item, [field]: value });
     }));
+
+  const updateLandingMerchImage = (field, value) =>
+    setLandingMerchImage(prev => normalizeLandingMerchImage({
+      ...prev,
+      [field]: field === "imageFileName" ? trimText(value) : (value || null),
+    }));
+
+  const resetLandingMerchImage = () => {
+    setLandingMerchImage({ ...DEFAULT_LANDING_MERCH_IMAGE });
+  };
 
   const updateMerchImage = (merchId, imageId, field, value) =>
     setMerchItems(prev => prev.map((item) => {
@@ -2909,6 +2989,9 @@ export default function YouEsports() {
   const isShopPage = activeNav === "shop" && !activeProfile;
   const armoryTeaserItem = merchItems[0] || normalizeMerchItem(DEFAULT_SHOP_ITEMS[0], 0);
   const armoryTeaserPrimaryImage = getMerchPrimaryImage(armoryTeaserItem);
+  const landingMerchOverrideImg = landingMerchImage.img || resolveLandingMerchImagePath(landingMerchImage.imageFileName);
+  const landingMerchTeaserSrc = landingMerchOverrideImg || LANDING_MERCH_COLLAGE_PATH;
+  const landingMerchAdminPreviewImg = landingMerchImage.img || (landingMerchImage.imageFileName ? resolveLandingMerchImagePath(landingMerchImage.imageFileName) : null);
   const armoryTeaserImg = armoryTeaserPrimaryImage.img
     || (armoryTeaserPrimaryImage.imageFileName ? getMerchImagePath(armoryTeaserPrimaryImage.imageFileName) : merchPreview);
   const handleLandingTeaserImageError = (event) => {
@@ -3192,7 +3275,7 @@ export default function YouEsports() {
                     </div>
                     {merchPersistenceMode === "local" && (
                       <div className="admin-err" style={{ marginBottom: "10px", color: "rgba(255,255,255,0.6)", textAlign: "left" }}>
-                        Local mode is not shared across devices. Create a Supabase merch table to sync live updates.
+                        Local mode is not shared across devices. Run supabase/create_merch_table.sql in Supabase SQL Editor to sync live updates.
                       </div>
                     )}
                     {merchStorageErr && (
@@ -3200,6 +3283,36 @@ export default function YouEsports() {
                         {merchStorageErr}
                       </div>
                     )}
+                    {landingMerchStorageErr && (
+                      <div className="admin-err" style={{ marginBottom: "10px" }}>
+                        {landingMerchStorageErr}
+                      </div>
+                    )}
+
+                    <div className="admin-player-card">
+                      <div className="admin-player-header">
+                        <span>LANDING PAGE MERCH IMAGE</span>
+                        <button type="button" className="admin-remove-btn" onClick={resetLandingMerchImage} disabled={adminLoading}>RESET</button>
+                      </div>
+
+                      <ImgUploadBlock
+                        img={landingMerchAdminPreviewImg}
+                        onUpload={v => updateLandingMerchImage("img", v)}
+                        onRemove={() => updateLandingMerchImage("img", null)}
+                      />
+
+                      <div className="admin-fields">
+                        <div className="admin-field" style={{ gridColumn: "1 / -1" }}>
+                          <label>STATIC IMAGE PATH OR URL (OPTIONAL)</label>
+                          <input
+                            value={landingMerchImage.imageFileName || ""}
+                            onChange={e => updateLandingMerchImage("imageFileName", e.target.value)}
+                            placeholder="/landing-merch-collage.jpg or merch/you-sticker-pack.jpg"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
                     {merchLoading && <div className="admin-err" style={{ marginBottom: "10px" }}>Loading merch...</div>}
                     {!merchLoading && merchItems.length === 0 && (
                       <div className="admin-err" style={{ marginBottom: "10px" }}>No merch found yet. Add your first merch item below.</div>
@@ -3493,7 +3606,7 @@ export default function YouEsports() {
         <div className="coming-soon-wrap card">
           <div className="cs-img-box">
             <img
-              src={LANDING_MERCH_COLLAGE_PATH}
+              src={landingMerchTeaserSrc}
               alt={`${armoryTeaserItem?.title || "YOU eSports"} merchandise teaser`}
               data-merch-file-name={armoryTeaserPrimaryImage.imageFileName || ""}
               data-merch-candidate-index="0"

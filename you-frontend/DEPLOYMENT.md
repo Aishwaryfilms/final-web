@@ -15,7 +15,12 @@ The app's data is stored in a Supabase project. There is no custom Node.js serve
 2. Make sure **Email** is enabled, and **disable** "Confirm email" (it's simpler for private admin usage).
 3. Go to **Authentication** -> **Users** and add a new user. This will be your admin login. Use an email and a strong password.
 
-### Step 3: Get Your Environment Variables
+### Step 3: Create the Merch Table (Required for cross-device sync)
+1. In your Supabase dashboard, open **SQL Editor**.
+2. Open [../supabase/create_merch_table.sql](../supabase/create_merch_table.sql) from this repo.
+3. Paste and run the script.
+
+### Step 4: Get Your Environment Variables
 You need two values from Supabase:
 1. In your project settings, go to **Project Settings** -> **API**.
 2. Copy your **Project URL** (`VITE_SUPABASE_URL`).
