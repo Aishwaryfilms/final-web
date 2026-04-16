@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import "altcha";
 import { supabase } from './supabaseClient';
-import merchPreview from './assets/merch-preview.jpg';
-import ShopSection from "./components/ShopSection";
+import ShopSection, { DEFAULT_SHOP_ITEMS } from "./components/ShopSection";
+import merchPreview from "./assets/merch-preview.jpg";
 
 const RED = "#e02020";
 
@@ -31,10 +31,52 @@ const ALTCHA_CONFIGURATION = '{"test":true}';
 
 const getPageFromHash = () => {
   const page = window.location.hash.replace(/^#\/?/, "");
+  if (page.toLowerCase().startsWith("shop/")) return "shop";
   return NAV_SECTION_IDS.includes(page) ? page : "home";
 };
 
 const getPageHref = (page) => `#${page}`;
+
+const getDefaultMerchBasePath = () => {
+  const basePath = (import.meta.env.BASE_URL || "/").replace(/\/?$/, "/");
+  return `${basePath}merch/`;
+};
+
+const shouldPreferWorkspaceRootMerch = () => {
+  if (typeof window === "undefined") return false;
+  const currentPath = String(window.location.pathname || "")
+    .replace(/\\/g, "/")
+    .toLowerCase();
+  return currentPath.includes("/you-frontend/");
+};
+
+const getMerchImageCandidates = (fileName) => {
+  const defaultPath = `${getDefaultMerchBasePath()}${fileName}`;
+  if (!shouldPreferWorkspaceRootMerch()) return [defaultPath];
+  return [`../merch/${fileName}`, defaultPath];
+};
+
+const getMerchImagePath = (fileName) => getMerchImageCandidates(fileName)[0];
+
+const handleMerchImageError = (event) => {
+  const currentImage = event.currentTarget;
+  const merchFileName = currentImage.dataset.merchFileName;
+  const currentCandidateIndex = Number(currentImage.dataset.merchCandidateIndex || "0");
+
+  if (merchFileName) {
+    const candidates = getMerchImageCandidates(merchFileName);
+    const nextCandidateIndex = currentCandidateIndex + 1;
+    if (nextCandidateIndex < candidates.length) {
+      currentImage.dataset.merchCandidateIndex = String(nextCandidateIndex);
+      currentImage.src = candidates[nextCandidateIndex];
+      return;
+    }
+  }
+
+  if (currentImage.dataset.fallbackApplied === "true") return;
+  currentImage.dataset.fallbackApplied = "true";
+  currentImage.src = merchPreview;
+};
 
 const getNavLabel = (section) => NAV_LABELS[section] || section.toUpperCase();
 
@@ -188,6 +230,227 @@ const runWithMissingColumnFallback = async (payload, execute) => {
 
   return result;
 };
+
+const getMissingTableName = (error) => {
+  const message = String(error?.message || "");
+  const relationMatch = message.match(/relation\s+["']?([\w.]+)["']?\s+does not exist/i);
+  if (relationMatch) {
+    const raw = relationMatch[1].replace(/"/g, "");
+    const parts = raw.split(".");
+    return parts[parts.length - 1];
+  }
+  return "";
+};
+
+const isMissingTableError = (error, tableName) => {
+  if (!error) return false;
+  return getMissingTableName(error).toLowerCase() === String(tableName || "").toLowerCase();
+};
+
+const MERCH_STORAGE_KEY = "youesports.merch.v1";
+const DEFAULT_MERCH_STATUS = "OUT OF STOCK";
+
+const createLocalMerchImageId = () => `local-merch-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const parseMerchImagesField = (value) => {
+  if (Array.isArray(value)) return value;
+
+  const trimmed = trimText(value);
+  if (!trimmed) return [];
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [trimmed];
+  }
+};
+
+const normalizeMerchImage = (value, index) => {
+  if (typeof value === "string") {
+    const trimmed = trimText(value);
+    if (!trimmed) return null;
+
+    const looksLikeUrl = /^(https?:\/\/|data:|blob:|\/|\.\/|\.\.\/)/i.test(trimmed);
+    return {
+      id: `merch-image-${index + 1}`,
+      img: looksLikeUrl ? trimmed : null,
+      imageFileName: looksLikeUrl ? "" : trimmed,
+    };
+  }
+
+  if (!value || typeof value !== "object") return null;
+
+  const hasExplicitId = Object.prototype.hasOwnProperty.call(value, "id");
+
+  const img = trimText(value.img || value.src || value.url || value.dataUrl) || null;
+  const imageFileName = trimText(
+    value.imageFileName
+      || value.image_file_name
+      || value.fileName
+      || value.file_name
+  );
+
+  if (!img && !imageFileName) {
+    if (!hasExplicitId) return null;
+    return {
+      id: String(value.id || `merch-image-${index + 1}`),
+      img: null,
+      imageFileName: "",
+    };
+  }
+
+  return {
+    id: String(value.id || `merch-image-${index + 1}`),
+    img,
+    imageFileName,
+  };
+};
+
+const isRenderableMerchImage = (image) => Boolean(
+  trimText(image?.img) || trimText(image?.imageFileName || image?.image_file_name)
+);
+
+const uniqueMerchImages = (images) => {
+  const seen = new Set();
+  const unique = [];
+
+  images.forEach((image, index) => {
+    const normalized = normalizeMerchImage(image, index);
+    if (!normalized) return;
+
+    const dedupeKey = `${normalized.img || ""}|${normalized.imageFileName || ""}`;
+    const shouldDedupe = Boolean(normalized.img || normalized.imageFileName);
+    if (shouldDedupe && seen.has(dedupeKey)) return;
+    if (shouldDedupe) seen.add(dedupeKey);
+
+    unique.push({
+      ...normalized,
+      id: normalized.id || createLocalMerchImageId(),
+    });
+  });
+
+  return unique;
+};
+
+const buildMerchImageList = (item, ensureOneSlot = true) => {
+  const hasExplicitImages = Array.isArray(item?.images)
+    || (typeof item?.images === "string" && trimText(item.images) !== "");
+
+  const imageSources = [
+    ...parseMerchImagesField(item?.images),
+    ...parseMerchImagesField(item?.imageGallery),
+    ...parseMerchImagesField(item?.image_gallery),
+    ...parseMerchImagesField(item?.image_gallery_json),
+    ...parseMerchImagesField(item?.imageUrls),
+    ...parseMerchImagesField(item?.image_urls),
+  ];
+
+  const normalizedImages = uniqueMerchImages(imageSources);
+
+  if (!normalizedImages.length && !hasExplicitImages) {
+    const fallbackImage = normalizeMerchImage(
+      {
+        id: "merch-primary",
+        img: item?.img || null,
+        imageFileName: item?.imageFileName || item?.image_file_name,
+      },
+      0
+    );
+
+    if (fallbackImage) normalizedImages.push(fallbackImage);
+  }
+
+  if (!normalizedImages.length && ensureOneSlot) {
+    normalizedImages.push({
+      id: createLocalMerchImageId(),
+      img: null,
+      imageFileName: "",
+    });
+  }
+
+  return normalizedImages.map((image) => ({
+    id: String(image.id || createLocalMerchImageId()),
+    img: trimText(image.img) || null,
+    imageFileName: trimText(image.imageFileName || image.image_file_name),
+  }));
+};
+
+const getMerchPrimaryImage = (item) => {
+  const images = buildMerchImageList(item, false);
+  const primaryImage = images.find(isRenderableMerchImage) || images[0];
+  if (primaryImage) return primaryImage;
+  return { id: "merch-primary", img: null, imageFileName: "" };
+};
+
+const withSyncedMerchPrimaryImage = (item) => {
+  const images = buildMerchImageList(item, true);
+  const primaryImage = images.find(isRenderableMerchImage)
+    || images[0]
+    || { id: "merch-primary", img: null, imageFileName: "" };
+
+  return {
+    ...item,
+    images,
+    img: primaryImage.img || null,
+    imageFileName: primaryImage.imageFileName || "",
+  };
+};
+
+const serializeMerchImages = (images) => {
+  const normalized = buildMerchImageList({ images }, false).map((image) => ({
+    id: image.id,
+    img: image.img || null,
+    imageFileName: trimText(image.imageFileName) || null,
+  }));
+
+  return normalized.length ? JSON.stringify(normalized) : null;
+};
+
+const normalizeMerchItem = (item, index) => {
+  const baseItem = {
+    id: item?.id ?? `local-merch-${index + 1}`,
+    num: String(item?.num || String(index + 1).padStart(2, "0")),
+    title: trimText(item?.title || item?.name) || `Merch Item ${index + 1}`,
+    description: trimText(item?.description) || "Description coming soon.",
+    status: trimText(item?.status) || DEFAULT_MERCH_STATUS,
+    img: item?.img || null,
+    imageFileName: trimText(item?.imageFileName || item?.image_file_name),
+    images: item?.images,
+  };
+
+  return withSyncedMerchPrimaryImage(baseItem);
+};
+
+const normalizeMerchItems = (items, useDefaultWhenEmpty = true) => {
+  const hasItems = Array.isArray(items) && items.length > 0;
+  const source = hasItems ? items : (useDefaultWhenEmpty ? DEFAULT_SHOP_ITEMS : []);
+  return source.map((item, index) => normalizeMerchItem(item, index));
+};
+
+const getLocalMerchItems = () => {
+  if (typeof window === "undefined") return normalizeMerchItems(DEFAULT_SHOP_ITEMS, true);
+  try {
+    const raw = window.localStorage.getItem(MERCH_STORAGE_KEY);
+    if (!raw) return normalizeMerchItems(DEFAULT_SHOP_ITEMS, true);
+    const parsed = JSON.parse(raw);
+    return normalizeMerchItems(Array.isArray(parsed) ? parsed : DEFAULT_SHOP_ITEMS, true);
+  } catch {
+    return normalizeMerchItems(DEFAULT_SHOP_ITEMS, true);
+  }
+};
+
+const setLocalMerchItems = (items) => {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(MERCH_STORAGE_KEY, JSON.stringify(normalizeMerchItems(items, false)));
+  } catch {
+    // Ignore localStorage write failures.
+  }
+};
+
+const createLocalMerchId = () => `local-merch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const isLocalMerchId = (id) => String(id).startsWith("local-merch-");
 
 const OPTIONAL_FIELDS_STORAGE_KEY = "youesports.optionalFields.v1";
 
@@ -1589,6 +1852,78 @@ const adminStyle = `
     font-size: 8px; letter-spacing: 1px;
     color: rgba(255,255,255,0.18); margin-top: 2px;
   }
+  .admin-merch-images {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .admin-merch-image-card {
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+    padding: 10px;
+    background: rgba(255,255,255,0.02);
+  }
+  .admin-merch-image-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-family: 'Space Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 1.2px;
+    color: rgba(255,255,255,0.55);
+  }
+  .admin-merch-image-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: flex-end;
+  }
+  .admin-merch-image-action-btn {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 7px;
+    color: rgba(255,255,255,0.7);
+    font-family: 'Space Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 1px;
+    padding: 4px 8px;
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s, background 0.2s;
+  }
+  .admin-merch-image-action-btn:hover:not(:disabled) {
+    border-color: rgba(200,0,0,0.5);
+    color: #fff;
+    background: rgba(200,0,0,0.2);
+  }
+  .admin-merch-image-action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .admin-merch-image-action-btn.danger {
+    border-color: rgba(200,0,0,0.3);
+    color: rgba(255,120,120,0.8);
+  }
+  .admin-merch-image-add-btn {
+    width: 100%;
+    background: rgba(255,255,255,0.03);
+    border: 1px dashed rgba(255,255,255,0.2);
+    border-radius: 9px;
+    color: rgba(255,255,255,0.7);
+    font-family: 'Space Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 1.4px;
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s, color 0.2s;
+  }
+  .admin-merch-image-add-btn:hover {
+    border-color: rgba(200,0,0,0.45);
+    background: rgba(200,0,0,0.12);
+    color: #fff;
+  }
   .admin-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .admin-field label {
     display: block;
@@ -1681,12 +2016,14 @@ function ImgUploadBlock({ img, onUpload, onRemove }) {
             accept="image/*"
             style={{ display: "none" }}
             onChange={e => {
-              const file = e.target.files[0];
+              const input = e.currentTarget;
+              const file = input.files?.[0];
               if (!file) return;
               if (file.size > 6 * 1024 * 1024) { alert("Image must be under 6MB"); return; }
               const reader = new FileReader();
               reader.onload = ev => onUpload(ev.target.result);
               reader.readAsDataURL(file);
+              input.value = "";
             }}
           />
         </label>
@@ -1806,20 +2143,32 @@ export default function YouEsports() {
   // Editable data
   const [roster, setRoster] = useState({ BGMI: [], Valorant: [] });
   const [creators, setCreators] = useState([]);
+  const [merchItems, setMerchItems] = useState(() => getLocalMerchItems());
+  const [merchLoading, setMerchLoading] = useState(true);
+  const [merchPersistenceMode, setMerchPersistenceMode] = useState("local");
   const [creatorsLoading, setCreatorsLoading] = useState(true);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    setLocalMerchItems(merchItems);
+  }, [merchItems]);
 
   /*  Fetch data from Supabase  */
   const fetchData = useCallback(async () => {
     setDataLoaded(false);
     setCreatorsLoading(true);
+    setMerchLoading(true);
 
     const optionalFieldStore = getOptionalFieldStore();
     const includeLocalFallback = adminAuthed;
+    const localMerchItems = getLocalMerchItems();
+    const localMerchById = new Map(localMerchItems.map((item) => [String(item.id), item]));
+    const localMerchByNum = new Map(localMerchItems.map((item) => [String(item.num), item]));
 
     const rosterRequest = supabase.from('roster').select('*').order('num');
     const creatorsRequest = supabase.from('creators').select('*').order('num');
+    const merchRequest = supabase.from('merch').select('*').order('num');
 
     const creatorsTask = creatorsRequest
       .then(({ data: creatorRows }) => {
@@ -1888,7 +2237,53 @@ export default function YouEsports() {
       }
     });
 
-    await Promise.allSettled([rosterTask, creatorsTask]);
+    const merchTask = merchRequest
+      .then(({ data: merchRows, error }) => {
+        if (error) {
+          setMerchPersistenceMode("local");
+          setMerchItems(getLocalMerchItems());
+          return;
+        }
+
+        const mappedMerch = (merchRows || []).map((row) => {
+          const localFallback = localMerchById.get(String(row.id)) || localMerchByNum.get(String(row.num)) || {};
+
+          return {
+            ...localFallback,
+            id: row.id,
+            num: row.num,
+            title: row.name || row.title || localFallback.title,
+            description: row.description || localFallback.description,
+            status: row.status || localFallback.status,
+            img: row.img || localFallback.img || null,
+            imageFileName:
+              row.image_file_name
+              || row.imageFileName
+              || localFallback.imageFileName,
+            images:
+              row.images
+              ?? row.image_gallery
+              ?? row.image_gallery_json
+              ?? row.image_urls
+              ?? row.imageUrls
+              ?? localFallback.images,
+          };
+        });
+
+        const nextMerch = normalizeMerchItems(mappedMerch, false);
+        setMerchPersistenceMode("supabase");
+        setMerchItems(nextMerch);
+        setLocalMerchItems(nextMerch);
+      })
+      .catch(() => {
+        setMerchPersistenceMode("local");
+        setMerchItems(getLocalMerchItems());
+      })
+      .finally(() => {
+        setMerchLoading(false);
+      });
+
+    await Promise.allSettled([rosterTask, creatorsTask, merchTask]);
     setDataLoaded(true);
   }, [adminAuthed]);
 
@@ -1979,6 +2374,21 @@ export default function YouEsports() {
     return payload;
   };
 
+  const buildMerchPayload = (merch) => {
+    const syncedMerch = withSyncedMerchPrimaryImage(merch);
+    const primaryImage = getMerchPrimaryImage(syncedMerch);
+
+    return {
+      num: syncedMerch.num,
+      name: trimText(syncedMerch.title) || "Merch Item",
+      description: trimText(syncedMerch.description),
+      status: trimText(syncedMerch.status) || DEFAULT_MERCH_STATUS,
+      img: primaryImage.img || null,
+      image_file_name: toOptionalValue(primaryImage.imageFileName),
+      images: toOptionalValue(serializeMerchImages(syncedMerch.images)),
+    };
+  };
+
   const updateRowWithFallback = async (table, id, payload) => {
     const result = await runWithMissingColumnFallback(
       payload,
@@ -2004,6 +2414,10 @@ export default function YouEsports() {
 
   const updateCreatorRow = async (creator) => {
     return updateRowWithFallback('creators', creator.id, buildCreatorPayload(creator, true));
+  };
+
+  const updateMerchRow = async (merch) => {
+    return updateRowWithFallback('merch', merch.id, buildMerchPayload(merch));
   };
 
   const addPlayer = async (game) => {
@@ -2050,6 +2464,161 @@ export default function YouEsports() {
   /*  Creator helpers (Supabase)  */
   const updateCreator = (id, field, value) =>
     setCreators(prev => prev.map(c => c.id === id ? { ...c, [field]: value } : c));
+
+  const updateMerch = (id, field, value) =>
+    setMerchItems(prev => prev.map((item) => {
+      if (String(item.id) !== String(id)) return item;
+      return withSyncedMerchPrimaryImage({ ...item, [field]: value });
+    }));
+
+  const updateMerchImage = (merchId, imageId, field, value) =>
+    setMerchItems(prev => prev.map((item) => {
+      if (String(item.id) !== String(merchId)) return item;
+
+      const nextImages = buildMerchImageList(item, true).map((image) => {
+        if (String(image.id) !== String(imageId)) return image;
+
+        return {
+          ...image,
+          [field]: field === "imageFileName" ? trimText(value) : (value || null),
+        };
+      });
+
+      return withSyncedMerchPrimaryImage({ ...item, images: nextImages });
+    }));
+
+  const addMerchImage = (merchId) =>
+    setMerchItems(prev => prev.map((item) => {
+      if (String(item.id) !== String(merchId)) return item;
+
+      const nextImages = [
+        ...buildMerchImageList(item, true),
+        { id: createLocalMerchImageId(), img: null, imageFileName: "" },
+      ];
+
+      return withSyncedMerchPrimaryImage({ ...item, images: nextImages });
+    }));
+
+  const removeMerchImage = (merchId, imageId) =>
+    setMerchItems(prev => prev.map((item) => {
+      if (String(item.id) !== String(merchId)) return item;
+
+      const remainingImages = buildMerchImageList(item, true)
+        .filter((image) => String(image.id) !== String(imageId));
+
+      const nextImages = remainingImages.length > 0
+        ? remainingImages
+        : [{ id: createLocalMerchImageId(), img: null, imageFileName: "" }];
+
+      return withSyncedMerchPrimaryImage({ ...item, images: nextImages });
+    }));
+
+  const moveMerchImage = (merchId, imageId, direction) =>
+    setMerchItems(prev => prev.map((item) => {
+      if (String(item.id) !== String(merchId)) return item;
+
+      const nextImages = [...buildMerchImageList(item, true)];
+      const currentIndex = nextImages.findIndex((image) => String(image.id) === String(imageId));
+      if (currentIndex < 0) return item;
+
+      const targetIndex = currentIndex + direction;
+      if (targetIndex < 0 || targetIndex >= nextImages.length) return item;
+
+      [nextImages[currentIndex], nextImages[targetIndex]] = [nextImages[targetIndex], nextImages[currentIndex]];
+      return withSyncedMerchPrimaryImage({ ...item, images: nextImages });
+    }));
+
+  const setMerchCoverImage = (merchId, imageId) =>
+    setMerchItems(prev => prev.map((item) => {
+      if (String(item.id) !== String(merchId)) return item;
+
+      const nextImages = [...buildMerchImageList(item, true)];
+      const currentIndex = nextImages.findIndex((image) => String(image.id) === String(imageId));
+      if (currentIndex <= 0) return item;
+
+      const [selectedImage] = nextImages.splice(currentIndex, 1);
+      nextImages.unshift(selectedImage);
+
+      return withSyncedMerchPrimaryImage({ ...item, images: nextImages });
+    }));
+
+  const addMerch = async () => {
+    setAdminOpErr("");
+    setAdminLoading(true);
+
+    const num = getNextNum(merchItems);
+    const newMerch = {
+      id: createLocalMerchId(),
+      num,
+      title: "New Merch Item",
+      description: "Describe this product.",
+      status: DEFAULT_MERCH_STATUS,
+      img: null,
+      imageFileName: "",
+      images: [{ id: createLocalMerchImageId(), img: null, imageFileName: "" }],
+    };
+
+    if (merchPersistenceMode === "local") {
+      const nextItems = normalizeMerchItems([...merchItems, newMerch], false);
+      setMerchItems(nextItems);
+      setLocalMerchItems(nextItems);
+      setAdminLoading(false);
+      return;
+    }
+
+    const result = await runWithMissingColumnFallback(
+      buildMerchPayload(newMerch),
+      (payload) => supabase.from('merch').insert(payload)
+    );
+
+    if (result.error) {
+      if (isMissingTableError(result.error, "merch")) {
+        setMerchPersistenceMode("local");
+        const nextItems = normalizeMerchItems([...merchItems, newMerch], false);
+        setMerchItems(nextItems);
+        setLocalMerchItems(nextItems);
+        setAdminLoading(false);
+        return;
+      }
+      setAdminLoading(false);
+      setAdminOpErr("Add failed: " + result.error.message);
+      return;
+    }
+
+    await fetchData();
+    setAdminLoading(false);
+  };
+
+  const removeMerch = async (id) => {
+    setAdminOpErr("");
+    setAdminLoading(true);
+
+    const nextItems = normalizeMerchItems(merchItems.filter(item => String(item.id) !== String(id)), false);
+
+    if (merchPersistenceMode === "local" || isLocalMerchId(id)) {
+      setMerchItems(nextItems);
+      setLocalMerchItems(nextItems);
+      setAdminLoading(false);
+      return;
+    }
+
+    const { error } = await supabase.from('merch').delete().eq('id', id);
+    if (error) {
+      if (isMissingTableError(error, "merch")) {
+        setMerchPersistenceMode("local");
+        setMerchItems(nextItems);
+        setLocalMerchItems(nextItems);
+        setAdminLoading(false);
+        return;
+      }
+      setAdminLoading(false);
+      setAdminOpErr("Remove failed: " + error.message);
+      return;
+    }
+
+    await fetchData();
+    setAdminLoading(false);
+  };
 
   const addCreator = async () => {
     setAdminOpErr("");
@@ -2102,10 +2671,41 @@ export default function YouEsports() {
       return updateRosterRow(p, game);
     }));
     const creatorResults = await Promise.all(creators.map(c => updateCreatorRow(c)));
-    const anyError = [...rosterResults, ...creatorResults].find(r => r.error);
+
+    let merchResults = [];
+    if (merchPersistenceMode === "supabase") {
+      merchResults = await Promise.all(merchItems.map(item => {
+        if (isLocalMerchId(item.id)) {
+          return runWithMissingColumnFallback(
+            buildMerchPayload(item),
+            (payload) => supabase.from('merch').insert(payload).select('id')
+          );
+        }
+        return updateMerchRow(item);
+      }));
+    } else {
+      setLocalMerchItems(merchItems);
+    }
+
+    const anyError = [...rosterResults, ...creatorResults, ...merchResults].find(r => r?.error);
+    setLocalMerchItems(merchItems);
     setAdminLoading(false);
-    if (anyError) { setAdminOpErr("Save failed: " + anyError.error.message); return; }
+    if (anyError) {
+      if (isMissingTableError(anyError.error, "merch")) {
+        setMerchPersistenceMode("local");
+        setLocalMerchItems(merchItems);
+      } else {
+        setAdminOpErr("Save failed: " + anyError.error.message);
+        return;
+      }
+    }
+
     persistOptionalFieldCache(roster, creators);
+
+    if (merchPersistenceMode === "supabase") {
+      await fetchData();
+    }
+
     setAdminSaved(true);
     setTimeout(() => setAdminSaved(false), 2500);
   };
@@ -2206,6 +2806,10 @@ export default function YouEsports() {
   const socialLinks = SOCIAL_LINKS.filter(s => s.href);
   const profileReturnHref = activeProfile?.type === "creator" ? getPageHref("creators") : getPageHref("roster");
   const isShopPage = activeNav === "shop" && !activeProfile;
+  const armoryTeaserItem = merchItems[0] || normalizeMerchItem(DEFAULT_SHOP_ITEMS[0], 0);
+  const armoryTeaserPrimaryImage = getMerchPrimaryImage(armoryTeaserItem);
+  const armoryTeaserImg = armoryTeaserPrimaryImage.img
+    || (armoryTeaserPrimaryImage.imageFileName ? getMerchImagePath(armoryTeaserPrimaryImage.imageFileName) : merchPreview);
 
   const profileRecord = useMemo(() => {
     if (!activeProfile) return null;
@@ -2330,7 +2934,7 @@ export default function YouEsports() {
           <div className="admin-panel">
             <button type="button" className="admin-close" onClick={closeAdmin}>X</button>
             <h3>ADMIN PANEL</h3>
-            <div className="panel-sub">ROSTER & CREATORS MANAGEMENT - YOUESPORTS</div>
+            <div className="panel-sub">ROSTER, CREATORS & MERCH MANAGEMENT - YOUESPORTS</div>
 
             {!adminAuthed ? (
               <div className="admin-login">
@@ -2358,7 +2962,7 @@ export default function YouEsports() {
               <>
                 {/* Tabs */}
                 <div className="admin-tabs">
-                  {["BGMI", "Valorant", "CREATORS"].map(t => (
+                  {["BGMI", "Valorant", "CREATORS", "MERCH"].map(t => (
                     <button type="button" key={t} className={`admin-tab ${adminTab === t ? "active" : ""}`} onClick={() => setAdminTab(t)}>{t}</button>
                   ))}
                 </div>
@@ -2470,6 +3074,127 @@ export default function YouEsports() {
                   </>
                 )}
 
+                {/* Merch tab */}
+                {adminTab === "MERCH" && (
+                  <>
+                    <div className="admin-err" style={{ marginBottom: "10px", color: "rgba(255,255,255,0.6)", textAlign: "left" }}>
+                      MODE: {merchPersistenceMode === "supabase" ? "SUPABASE TABLE" : "LOCAL BROWSER STORAGE"}
+                    </div>
+                    {merchLoading && <div className="admin-err" style={{ marginBottom: "10px" }}>Loading merch...</div>}
+                    {!merchLoading && merchItems.length === 0 && (
+                      <div className="admin-err" style={{ marginBottom: "10px" }}>No merch found yet. Add your first merch item below.</div>
+                    )}
+
+                    {merchItems.map(item => (
+                      <div key={item.id} className="admin-player-card">
+                        <div className="admin-player-header">
+                          <span>MERCH #{item.num} - {item.title}</span>
+                          <button type="button" className="admin-remove-btn" onClick={() => removeMerch(item.id)} disabled={adminLoading}>REMOVE</button>
+                        </div>
+
+                        <div className="admin-merch-images">
+                          {buildMerchImageList(item, true).map((image, imageIndex, imageList) => (
+                            <div key={image.id} className="admin-merch-image-card">
+                              <div className="admin-merch-image-head">
+                                <span>IMAGE #{String(imageIndex + 1).padStart(2, "0")}{imageIndex === 0 ? " - COVER" : ""}</span>
+                                <div className="admin-merch-image-actions">
+                                  <button
+                                    type="button"
+                                    className="admin-merch-image-action-btn"
+                                    onClick={() => moveMerchImage(item.id, image.id, -1)}
+                                    disabled={adminLoading || imageIndex === 0}
+                                  >
+                                    UP
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="admin-merch-image-action-btn"
+                                    onClick={() => moveMerchImage(item.id, image.id, 1)}
+                                    disabled={adminLoading || imageIndex === imageList.length - 1}
+                                  >
+                                    DOWN
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="admin-merch-image-action-btn"
+                                    onClick={() => setMerchCoverImage(item.id, image.id)}
+                                    disabled={adminLoading || imageIndex === 0}
+                                  >
+                                    SET COVER
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="admin-merch-image-action-btn danger"
+                                    onClick={() => removeMerchImage(item.id, image.id)}
+                                    disabled={adminLoading}
+                                  >
+                                    REMOVE
+                                  </button>
+                                </div>
+                              </div>
+
+                              <ImgUploadBlock
+                                img={image.img || (image.imageFileName ? getMerchImagePath(image.imageFileName) : null)}
+                                onUpload={v => updateMerchImage(item.id, image.id, "img", v)}
+                                onRemove={() => updateMerchImage(item.id, image.id, "img", null)}
+                              />
+
+                              <div className="admin-field" style={{ gridColumn: "1 / -1" }}>
+                                <label>STATIC IMAGE FILE NAME (OPTIONAL)</label>
+                                <input
+                                  value={image.imageFileName || ""}
+                                  onChange={e => updateMerchImage(item.id, image.id, "imageFileName", e.target.value)}
+                                  placeholder="you-pro-jersey-front.jpg"
+                                />
+                              </div>
+                            </div>
+                          ))}
+
+                          <button
+                            type="button"
+                            className="admin-merch-image-add-btn"
+                            onClick={() => addMerchImage(item.id)}
+                            disabled={adminLoading}
+                          >
+                            + ADD IMAGE TO THIS ITEM
+                          </button>
+                        </div>
+
+                        <div className="admin-fields">
+                          <div className="admin-field">
+                            <label>PRODUCT NAME</label>
+                            <input
+                              value={item.title}
+                              onChange={e => updateMerch(item.id, "title", e.target.value)}
+                              placeholder="YOU Pro Jersey"
+                            />
+                          </div>
+
+                          <div className="admin-field">
+                            <label>STATUS</label>
+                            <input
+                              value={item.status}
+                              onChange={e => updateMerch(item.id, "status", e.target.value)}
+                              placeholder="OUT OF STOCK"
+                            />
+                          </div>
+
+                          <div className="admin-field" style={{ gridColumn: "1 / -1" }}>
+                            <label>DESCRIPTION</label>
+                            <textarea
+                              value={item.description}
+                              onChange={e => updateMerch(item.id, "description", e.target.value)}
+                              placeholder="Describe this merch item for the shop card and product page."
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    <button type="button" className="admin-add-btn" onClick={addMerch} disabled={adminLoading}>+ ADD MERCH ITEM</button>
+                  </>
+                )}
+
                 <button type="button" className="admin-save-btn" onClick={handleAdminSave} disabled={adminLoading}>
                   {adminLoading ? "SAVING..." : "SAVE CHANGES"}
                 </button>
@@ -2538,7 +3263,7 @@ export default function YouEsports() {
       )}
 
       {isShopPage ? (
-        <ShopSection />
+        <ShopSection items={merchItems} />
       ) : (
         <>
       {/* HERO */}
@@ -2647,16 +3372,24 @@ export default function YouEsports() {
         <h2 className="sec-h2">MERCH <span className="red">STORE</span></h2>
         <div className="coming-soon-wrap card">
           <div className="cs-img-box">
-            <img src={merchPreview} alt="YOU eSports merchandise teaser" loading="lazy" decoding="async" />
+            <img
+              src={armoryTeaserImg}
+              alt={`${armoryTeaserItem?.title || "YOU eSports"} merchandise teaser`}
+              data-merch-file-name={armoryTeaserPrimaryImage.imageFileName || ""}
+              data-merch-candidate-index="0"
+              loading="lazy"
+              decoding="async"
+              onError={handleMerchImageError}
+            />
           </div>
           <div className="cs-content">
             <div className="cs-icon">SOON</div>
-            <div className="cs-title">ARMORY COMING SOON</div>
+            <div className="cs-title">{armoryTeaserItem?.title || "ARMORY COMING SOON"}</div>
             <p className="cs-sub">
-              The merch page is ready for your products. Add your own images and descriptions when you are ready.
+              {armoryTeaserItem?.description || "The merch page is ready for your products. Add your own images and descriptions when you are ready."}
             </p>
             <a href={getPageHref("shop")} className="cs-enter-btn">ENTER SHOP</a>
-            <div className="cs-badge">CURRENT STATUS - PRODUCTS COMING SOON</div>
+            <div className="cs-badge">CURRENT STATUS - {armoryTeaserItem?.status || "PRODUCTS COMING SOON"}</div>
           </div>
         </div>
       </section>

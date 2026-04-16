@@ -25,6 +25,7 @@ const distDir = join(projectDir, "dist");
 const distIndexPath = join(distDir, "index.html");
 const dist404Path = join(distDir, "404.html");
 const distAssetsDir = join(distDir, "assets");
+const distMerchDir = join(distDir, "merch");
 const distFaviconFiles = [
   "favicon.ico",
   "favicon.svg",
@@ -34,6 +35,8 @@ const distFaviconFiles = [
 const rootIndexPath = join(workspaceRoot, "index.html");
 const root404Path = join(workspaceRoot, "404.html");
 const rootAssetsDir = join(workspaceRoot, "assets");
+const rootMerchDir = join(workspaceRoot, "merch");
+const projectMerchDir = join(projectDir, "merch");
 
 // Only sync into the parent workspace when this package is in the expected folder.
 const shouldSyncWorkspaceRoot =
@@ -49,6 +52,14 @@ function copyDirectory(sourcePath, destinationPath) {
   rmSync(destinationPath, { recursive: true, force: true });
   mkdirSync(destinationPath, { recursive: true });
   cpSync(sourcePath, destinationPath, { recursive: true });
+}
+
+function syncOptionalDirectory(sourcePath, destinationPath) {
+  if (existsSync(sourcePath)) {
+    copyDirectory(sourcePath, destinationPath);
+    return;
+  }
+  rmSync(destinationPath, { recursive: true, force: true });
 }
 
 if (!existsSync(sourceTemplatePath)) {
@@ -83,6 +94,12 @@ try {
   copyFile(dist404Path, project404Path);
   copyDirectory(distAssetsDir, projectAssetsDir);
 
+  if (shouldSyncWorkspaceRoot) {
+    rmSync(projectMerchDir, { recursive: true, force: true });
+  } else {
+    syncOptionalDirectory(distMerchDir, projectMerchDir);
+  }
+
   // Keep root-level favicon files in sync.
   for (const fileName of distFaviconFiles) {
     const sourcePath = join(distDir, fileName);
@@ -96,6 +113,7 @@ try {
     copyFile(distIndexPath, rootIndexPath);
     copyFile(dist404Path, root404Path);
     copyDirectory(distAssetsDir, rootAssetsDir);
+    syncOptionalDirectory(distMerchDir, rootMerchDir);
 
     for (const fileName of distFaviconFiles) {
       const sourcePath = join(distDir, fileName);
