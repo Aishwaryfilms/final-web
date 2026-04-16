@@ -461,6 +461,12 @@ const setLocalMerchItems = (items) => {
   }
 };
 
+const getMerchFallbackItems = (allowLocalFallback) => (
+  allowLocalFallback
+    ? getLocalMerchItems()
+    : normalizeMerchItems(DEFAULT_SHOP_ITEMS, true)
+);
+
 const readFileAsDataUrl = (file) => new Promise((resolve, reject) => {
   const reader = new FileReader();
   reader.onload = (event) => resolve(String(event?.target?.result || ""));
@@ -2231,7 +2237,7 @@ export default function YouEsports() {
   // Editable data
   const [roster, setRoster] = useState({ BGMI: [], Valorant: [] });
   const [creators, setCreators] = useState([]);
-  const [merchItems, setMerchItems] = useState(() => getLocalMerchItems());
+  const [merchItems, setMerchItems] = useState(() => getMerchFallbackItems(false));
   const [merchLoading, setMerchLoading] = useState(true);
   const [merchPersistenceMode, setMerchPersistenceMode] = useState("local");
   const [creatorsLoading, setCreatorsLoading] = useState(true);
@@ -2239,13 +2245,15 @@ export default function YouEsports() {
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
+    if (merchPersistenceMode === "local" && !adminAuthed) return;
+
     const result = setLocalMerchItems(merchItems);
     if (result?.ok === false) {
       setMerchStorageErr(result.error || "Could not save merch locally.");
       return;
     }
     setMerchStorageErr("");
-  }, [merchItems]);
+  }, [adminAuthed, merchItems, merchPersistenceMode]);
 
   /*  Fetch data from Supabase  */
   const fetchData = useCallback(async () => {
@@ -2255,7 +2263,7 @@ export default function YouEsports() {
 
     const optionalFieldStore = getOptionalFieldStore();
     const includeLocalFallback = adminAuthed;
-    const localMerchItems = getLocalMerchItems();
+    const localMerchItems = getMerchFallbackItems(includeLocalFallback);
     const localMerchById = new Map(localMerchItems.map((item) => [String(item.id), item]));
     const localMerchByNum = new Map(localMerchItems.map((item) => [toMerchNumKey(item.num), item]));
 
@@ -2334,7 +2342,7 @@ export default function YouEsports() {
       .then(({ data: merchRows, error }) => {
         if (error) {
           setMerchPersistenceMode("local");
-          setMerchItems(getLocalMerchItems());
+          setMerchItems(localMerchItems);
           return;
         }
 
@@ -2370,7 +2378,7 @@ export default function YouEsports() {
       })
       .catch(() => {
         setMerchPersistenceMode("local");
-        setMerchItems(getLocalMerchItems());
+        setMerchItems(localMerchItems);
       })
       .finally(() => {
         setMerchLoading(false);
@@ -3180,8 +3188,13 @@ export default function YouEsports() {
                 {adminTab === "MERCH" && (
                   <>
                     <div className="admin-err" style={{ marginBottom: "10px", color: "rgba(255,255,255,0.6)", textAlign: "left" }}>
-                      MODE: {merchPersistenceMode === "supabase" ? "SUPABASE TABLE" : "LOCAL BROWSER STORAGE"}
+                      MODE: {merchPersistenceMode === "supabase" ? "SUPABASE TABLE" : "LOCAL BROWSER STORAGE (THIS DEVICE ONLY)"}
                     </div>
+                    {merchPersistenceMode === "local" && (
+                      <div className="admin-err" style={{ marginBottom: "10px", color: "rgba(255,255,255,0.6)", textAlign: "left" }}>
+                        Local mode is not shared across devices. Create a Supabase merch table to sync live updates.
+                      </div>
+                    )}
                     {merchStorageErr && (
                       <div className="admin-err" style={{ marginBottom: "10px" }}>
                         {merchStorageErr}
