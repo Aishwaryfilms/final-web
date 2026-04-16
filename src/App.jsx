@@ -27,6 +27,7 @@ const CONTACT_INFO_ITEMS = [
 
 const ALTCHA_CHALLENGE_URL = (import.meta.env.VITE_ALTCHA_CHALLENGE_URL || "").trim();
 const ALTCHA_CONFIGURATION = '{"test":true}';
+const LANDING_MERCH_COLLAGE_PATH = "/landing-merch-collage.jpg";
 
 const getPageFromHash = () => {
   const page = window.location.hash.replace(/^#\/?/, "");
@@ -997,16 +998,24 @@ const style = `
     backdrop-filter: blur(18px);
     overflow: hidden;
     display: grid;
-    grid-template-columns: 1fr 1.2fr;
-    align-items: stretch;
+    grid-template-columns: minmax(270px, 0.95fr) minmax(0, 1.05fr);
+    align-items: center;
+  }
+  @media (max-width: 1100px) {
+    .coming-soon-wrap { grid-template-columns: minmax(250px, 0.98fr) minmax(0, 1.02fr); }
   }
   @media (max-width: 900px) {
-    .coming-soon-wrap { grid-template-columns: 1fr; }
+    .coming-soon-wrap { grid-template-columns: 1fr; align-items: stretch; }
   }
   .cs-img-box {
     border-right: 1px dashed rgba(200,0,0,0.3);
     position: relative;
     overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.34);
+    min-height: clamp(300px, 36vw, 460px);
   }
   @media (max-width: 900px) {
     .cs-img-box { border-right: none; border-bottom: 1px dashed rgba(200,0,0,0.3); }
@@ -1014,15 +1023,19 @@ const style = `
   .cs-img-box img {
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: contain;
+    padding: clamp(6px, 1.1vw, 12px);
     display: block;
-    filter: saturate(1.1) contrast(1.1);
+    filter: saturate(1.08) contrast(1.06);
+  }
+  @media (max-width: 900px) {
+    .cs-img-box img { height: clamp(250px, 64vw, 360px); padding: 10px; }
   }
   .cs-img-box img:hover {
-    transform: none;
+    transform: scale(1.02);
   }
   .cs-content {
-    padding: 5rem 3rem;
+    padding: clamp(2.4rem, 4.5vw, 4.2rem) clamp(1.4rem, 3.4vw, 3rem);
     text-align: center;
     display: flex; flex-direction: column; align-items: center; gap: 1.2rem;
     justify-content: center;
@@ -2453,7 +2466,14 @@ export default function YouEsports() {
         <h2 className="sec-h2">MERCH <span className="red">DROPS</span></h2>
         <div className="coming-soon-wrap card">
           <div className="cs-img-box">
-            <img src={merchPreview} alt="You eSports Jersey First Look" />
+            <img
+              src={LANDING_MERCH_COLLAGE_PATH}
+              alt="You eSports Jersey First Look"
+              onError={(event) => {
+                event.currentTarget.onerror = null;
+                event.currentTarget.src = merchPreview;
+              }}
+            />
           </div>
           <div className="cs-content">
             <div className="cs-icon">NEW</div>

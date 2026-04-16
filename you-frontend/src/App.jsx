@@ -28,6 +28,7 @@ const CONTACT_INFO_ITEMS = [
 
 const ALTCHA_CHALLENGE_URL = (import.meta.env.VITE_ALTCHA_CHALLENGE_URL || "").trim();
 const ALTCHA_CONFIGURATION = '{"test":true}';
+const LANDING_MERCH_COLLAGE_PATH = "/landing-merch-collage.jpg";
 
 const getPageFromHash = () => {
   const page = window.location.hash.replace(/^#\/?/, "");
@@ -96,6 +97,13 @@ const parseProfileHash = () => {
 const getProfileHref = (type, id) => `#profile/${type}/${encodeURIComponent(String(id))}`;
 
 const trimText = (value) => (typeof value === "string" ? value.trim() : "");
+
+const toMerchNumKey = (value) => {
+  const normalized = trimText(String(value ?? ""));
+  if (!normalized) return "";
+  const parsed = Number.parseInt(normalized, 10);
+  return Number.isFinite(parsed) ? String(parsed) : normalized;
+};
 
 const toOptionalValue = (value) => {
   const trimmed = trimText(value);
@@ -444,8 +452,63 @@ const setLocalMerchItems = (items) => {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(MERCH_STORAGE_KEY, JSON.stringify(normalizeMerchItems(items, false)));
+    return { ok: true, error: "" };
   } catch {
-    // Ignore localStorage write failures.
+    return {
+      ok: false,
+      error: "Local browser storage is full. Use static file names or smaller uploads.",
+    };
+  }
+};
+
+const readFileAsDataUrl = (file) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = (event) => resolve(String(event?.target?.result || ""));
+  reader.onerror = () => reject(new Error("read-failed"));
+  reader.readAsDataURL(file);
+});
+
+const loadImageFromDataUrl = (dataUrl) => new Promise((resolve, reject) => {
+  const image = new Image();
+  image.onload = () => resolve(image);
+  image.onerror = () => reject(new Error("image-load-failed"));
+  image.src = dataUrl;
+});
+
+const normalizeUploadImage = async (file) => {
+  const originalDataUrl = await readFileAsDataUrl(file);
+  if (!originalDataUrl || typeof document === "undefined") return originalDataUrl;
+
+  try {
+    const image = await loadImageFromDataUrl(originalDataUrl);
+    const maxEdge = 1400;
+    const longestEdge = Math.max(image.width || 0, image.height || 0);
+    const scale = longestEdge > maxEdge ? (maxEdge / longestEdge) : 1;
+
+    const width = Math.max(1, Math.round((image.width || 1) * scale));
+    const height = Math.max(1, Math.round((image.height || 1) * scale));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+
+    const context = canvas.getContext("2d");
+    if (!context) return originalDataUrl;
+
+    context.drawImage(image, 0, 0, width, height);
+
+    let compressedDataUrl = canvas.toDataURL("image/webp", 0.82);
+    if (!compressedDataUrl || compressedDataUrl.length >= originalDataUrl.length) {
+      compressedDataUrl = canvas.toDataURL("image/jpeg", 0.82);
+    }
+
+    if (!compressedDataUrl || compressedDataUrl.length >= originalDataUrl.length) {
+      return originalDataUrl;
+    }
+
+    return compressedDataUrl;
+  } catch {
+    return originalDataUrl;
   }
 };
 
@@ -1384,16 +1447,24 @@ const style = `
     backdrop-filter: blur(18px);
     overflow: hidden;
     display: grid;
-    grid-template-columns: 1fr 1.2fr;
-    align-items: stretch;
+    grid-template-columns: minmax(270px, 0.95fr) minmax(0, 1.05fr);
+    align-items: center;
+  }
+  @media (max-width: 1100px) {
+    .coming-soon-wrap { grid-template-columns: minmax(250px, 0.98fr) minmax(0, 1.02fr); }
   }
   @media (max-width: 900px) {
-    .coming-soon-wrap { grid-template-columns: 1fr; }
+    .coming-soon-wrap { grid-template-columns: 1fr; align-items: stretch; }
   }
   .cs-img-box {
     border-right: 1px dashed rgba(200,0,0,0.3);
     position: relative;
     overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.34);
+    min-height: clamp(300px, 36vw, 460px);
   }
   @media (max-width: 900px) {
     .cs-img-box { border-right: none; border-bottom: 1px dashed rgba(200,0,0,0.3); }
@@ -1401,17 +1472,21 @@ const style = `
   .cs-img-box img {
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: contain;
+    padding: clamp(6px, 1.1vw, 12px);
     display: block;
-    filter: saturate(1.1) contrast(1.1);
+    filter: saturate(1.08) contrast(1.06);
     transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1), filter 0.3s ease;
   }
+  @media (max-width: 900px) {
+    .cs-img-box img { height: clamp(250px, 64vw, 360px); padding: 10px; }
+  }
   .cs-img-box img:hover {
-    transform: scale(1.05);
-    filter: saturate(1.16) contrast(1.14);
+    transform: scale(1.02);
+    filter: saturate(1.14) contrast(1.1);
   }
   .cs-content {
-    padding: 5rem 3rem;
+    padding: clamp(2.4rem, 4.5vw, 4.2rem) clamp(1.4rem, 3.4vw, 3rem);
     text-align: center;
     display: flex; flex-direction: column; align-items: center; gap: 1rem;
     justify-content: center;
@@ -2015,14 +2090,26 @@ function ImgUploadBlock({ img, onUpload, onRemove }) {
             type="file"
             accept="image/*"
             style={{ display: "none" }}
-            onChange={e => {
+            onChange={async e => {
               const input = e.currentTarget;
               const file = input.files?.[0];
               if (!file) return;
               if (file.size > 6 * 1024 * 1024) { alert("Image must be under 6MB"); return; }
-              const reader = new FileReader();
-              reader.onload = ev => onUpload(ev.target.result);
-              reader.readAsDataURL(file);
+
+              const normalizedImage = await normalizeUploadImage(file);
+              if (!normalizedImage) {
+                alert("Could not process image. Try another file.");
+                input.value = "";
+                return;
+              }
+
+              if (normalizedImage.length > 1_800_000) {
+                alert("Image is still too large after compression. Use a smaller image or static file name.");
+                input.value = "";
+                return;
+              }
+
+              onUpload(normalizedImage);
               input.value = "";
             }}
           />
@@ -2139,6 +2226,7 @@ export default function YouEsports() {
   const [adminTab, setAdminTab] = useState("BGMI");
   const [adminSaved, setAdminSaved] = useState(false);
   const [adminOpErr, setAdminOpErr] = useState("");
+  const [merchStorageErr, setMerchStorageErr] = useState("");
 
   // Editable data
   const [roster, setRoster] = useState({ BGMI: [], Valorant: [] });
@@ -2151,7 +2239,12 @@ export default function YouEsports() {
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
-    setLocalMerchItems(merchItems);
+    const result = setLocalMerchItems(merchItems);
+    if (result?.ok === false) {
+      setMerchStorageErr(result.error || "Could not save merch locally.");
+      return;
+    }
+    setMerchStorageErr("");
   }, [merchItems]);
 
   /*  Fetch data from Supabase  */
@@ -2164,7 +2257,7 @@ export default function YouEsports() {
     const includeLocalFallback = adminAuthed;
     const localMerchItems = getLocalMerchItems();
     const localMerchById = new Map(localMerchItems.map((item) => [String(item.id), item]));
-    const localMerchByNum = new Map(localMerchItems.map((item) => [String(item.num), item]));
+    const localMerchByNum = new Map(localMerchItems.map((item) => [toMerchNumKey(item.num), item]));
 
     const rosterRequest = supabase.from('roster').select('*').order('num');
     const creatorsRequest = supabase.from('creators').select('*').order('num');
@@ -2246,7 +2339,7 @@ export default function YouEsports() {
         }
 
         const mappedMerch = (merchRows || []).map((row) => {
-          const localFallback = localMerchById.get(String(row.id)) || localMerchByNum.get(String(row.num)) || {};
+          const localFallback = localMerchById.get(String(row.id)) || localMerchByNum.get(toMerchNumKey(row.num)) || {};
 
           return {
             ...localFallback,
@@ -2810,6 +2903,15 @@ export default function YouEsports() {
   const armoryTeaserPrimaryImage = getMerchPrimaryImage(armoryTeaserItem);
   const armoryTeaserImg = armoryTeaserPrimaryImage.img
     || (armoryTeaserPrimaryImage.imageFileName ? getMerchImagePath(armoryTeaserPrimaryImage.imageFileName) : merchPreview);
+  const handleLandingTeaserImageError = (event) => {
+    const target = event.currentTarget;
+    if (target.dataset.landingFallbackApplied !== "1") {
+      target.dataset.landingFallbackApplied = "1";
+      target.src = armoryTeaserImg;
+      return;
+    }
+    handleMerchImageError(event);
+  };
 
   const profileRecord = useMemo(() => {
     if (!activeProfile) return null;
@@ -3080,6 +3182,11 @@ export default function YouEsports() {
                     <div className="admin-err" style={{ marginBottom: "10px", color: "rgba(255,255,255,0.6)", textAlign: "left" }}>
                       MODE: {merchPersistenceMode === "supabase" ? "SUPABASE TABLE" : "LOCAL BROWSER STORAGE"}
                     </div>
+                    {merchStorageErr && (
+                      <div className="admin-err" style={{ marginBottom: "10px" }}>
+                        {merchStorageErr}
+                      </div>
+                    )}
                     {merchLoading && <div className="admin-err" style={{ marginBottom: "10px" }}>Loading merch...</div>}
                     {!merchLoading && merchItems.length === 0 && (
                       <div className="admin-err" style={{ marginBottom: "10px" }}>No merch found yet. Add your first merch item below.</div>
@@ -3373,13 +3480,13 @@ export default function YouEsports() {
         <div className="coming-soon-wrap card">
           <div className="cs-img-box">
             <img
-              src={armoryTeaserImg}
+              src={LANDING_MERCH_COLLAGE_PATH}
               alt={`${armoryTeaserItem?.title || "YOU eSports"} merchandise teaser`}
               data-merch-file-name={armoryTeaserPrimaryImage.imageFileName || ""}
               data-merch-candidate-index="0"
               loading="lazy"
               decoding="async"
-              onError={handleMerchImageError}
+              onError={handleLandingTeaserImageError}
             />
           </div>
           <div className="cs-content">
