@@ -2286,7 +2286,7 @@ export default function YouEsports() {
   const [adminPass, setAdminPass] = useState("");
   const [adminErr, setAdminErr] = useState("");
   const [adminLoading, setAdminLoading] = useState(false);
-  const [adminTab, setAdminTab] = useState("BGMI");
+  const [adminTab, setAdminTab] = useState("MERCH");
   const [adminSaved, setAdminSaved] = useState(false);
   const [adminOpErr, setAdminOpErr] = useState("");
   const [merchStorageErr, setMerchStorageErr] = useState("");
